@@ -21,12 +21,13 @@ type Consumer struct {
 
 func New(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) *Consumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  strings.Split(kafkaConfig.Broker, ","),
-		Topic:    kafkaConfig.Topic,
-		GroupID:  kafkaConfig.GroupId,
-		MinBytes: 10e3, // 10KB minimum fetch
-		MaxBytes: 10e6, // 10MB maximum fetch
-		MaxWait:  1 * time.Second,
+		Brokers:     strings.Split(kafkaConfig.Broker, ","),
+		Topic:       kafkaConfig.Topic,
+		GroupID:     kafkaConfig.GroupId,
+		MinBytes:    10e3, // 10KB minimum fetch
+		MaxBytes:    10e6, // 10MB maximum fetch
+		MaxWait:     1 * time.Second,
+		StartOffset: kafka.FirstOffset, // Read from offset 0 / earliest message available
 	})
 
 	return &Consumer{
@@ -67,7 +68,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 			continue
 		}
 
-		// 3. Commit offset AFTER processing succeeds (At-Least-Once Semantics)
+		// Commit offset AFTER processing succeeds (At-Least-Once Semantics)
 		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			c.logger.Error("failed to commit offset", "error", err)
 		}
