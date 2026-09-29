@@ -1,0 +1,7 @@
+{
+    "kafka": {
+        "broker": "localhost:9092",
+        "topic": "resources",
+        "groupId": "ui"
+    }
+}
