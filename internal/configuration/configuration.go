@@ -7,7 +7,7 @@ import (
 )
 
 type KafkaConfig struct {
-	Broker  string `json:"broker"`
+	Brokers string `json:"brokers"`
 	Topic   string `json:"topic"`
 	GroupId string `json:"groupId"`
 }
@@ -26,7 +26,7 @@ func LoadConfig(path string) (*Config, error) {
 
 	conf := Config{
 		Kafka: KafkaConfig{
-			Broker:  "",
+			Brokers: "",
 			Topic:   "",
 			GroupId: "default",
 		},
@@ -45,8 +45,8 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 func (c *Config) Validate() error {
-	if c.Kafka.Broker == "" {
-		return fmt.Errorf("kafka broker is required")
+	if c.Kafka.Brokers == "" {
+		return fmt.Errorf("kafka brokers is required")
 	}
 
 	if c.Kafka.Topic == "" {

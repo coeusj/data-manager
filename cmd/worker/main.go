@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"local/data-manager/internal/configuration"
+	"local/data-manager/internal/consumer"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"local/data-manager/internal/configuration"
-	"local/data-manager/internal/consumer"
 )
 
 func main() {
@@ -35,20 +33,22 @@ func run() error {
 }
 
 func start(ctx context.Context, logger *slog.Logger) error {
-	configPath := flag.String("config", "", "configuration's file path")
-	flag.Parse()
-
-	if *configPath == "" {
-		fmt.Fprintln(os.Stderr, "Error: -config flag is required")
+	configPath := os.Getenv("DM_CONFIG_PATH")
+	if configPath == "" {
+		logger.Error("missing env variable DM_CONFIG_PATH")
 		os.Exit(1)
 	}
 
-	config, err := configuration.LoadConfig(*configPath)
+	config, err := configuration.LoadConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
-	consumer := consumer.New(config.Kafka, logger)
+	consumer, err := consumer.New(config.Kafka, logger)
+	if err != nil {
+		return err
+	}
+
 	if err := consumer.Start(ctx); err != nil {
 		return fmt.Errorf("could not start consumer: %w", err)
 	}

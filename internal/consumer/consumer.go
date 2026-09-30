@@ -3,93 +3,118 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
-	"strings"
-	"time"
-
-	"github.com/segmentio/kafka-go"
-
 	"local/data-manager/internal/configuration"
+	"log/slog"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type Consumer struct {
-	reader *kafka.Reader
-	logger *slog.Logger
+	kafkaConsumer *kafka.Consumer
+	logger        *slog.Logger
 }
 
-func New(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) *Consumer {
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     strings.Split(kafkaConfig.Broker, ","),
-		Topic:       kafkaConfig.Topic,
-		GroupID:     kafkaConfig.GroupId,
-		MinBytes:    10e3, // 10KB minimum fetch
-		MaxBytes:    10e6, // 10MB maximum fetch
-		MaxWait:     1 * time.Second,
-		StartOffset: kafka.FirstOffset, // Read from offset 0 / earliest message available
-	})
+func New(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*Consumer, error) {
+	consumerConfig := kafka.ConfigMap{
+		"bootstrap.servers":  kafkaConfig.Brokers,
+		"group.id":           kafkaConfig.GroupId,
+		"auto.offset.reset":  "earliest",
+		"enable.auto.commit": false, // Disable auto-commit for at-least-once semantics
+	}
+
+	consumer, err := kafka.NewConsumer(&consumerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
+	}
+
+	if err := consumer.Subscribe(kafkaConfig.Topic, nil); err != nil {
+		return nil, fmt.Errorf("failed to subscribe to topic: %w", err)
+	}
 
 	return &Consumer{
-		reader: reader,
-		logger: logger,
-	}
+		kafkaConsumer: consumer,
+		logger:        logger,
+	}, nil
 }
 
 func (c *Consumer) Start(ctx context.Context) error {
 	defer func() {
-		if err := c.reader.Close(); err != nil {
-			c.logger.Error("failed to close kafka reader", "error", err)
+		c.logger.Info("closing kafka consumer connection")
+		if err := c.kafkaConsumer.Close(); err != nil {
+			c.logger.Error("failed to close kafka consumer cleanly", "error", err)
 		}
 	}()
 
-	c.logger.Info("start listening for kafka messages", "topic", c.reader.Config().Topic)
+	c.logger.Info("kafka consumer loop started")
 
 	for {
-		msg, err := c.reader.FetchMessage(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				c.logger.Info("kafka consumer context cancelled, exiting loop")
-				return nil
+		select {
+		case <-ctx.Done():
+			c.logger.Info("context canceled, exiting consumer loop")
+			return nil
+		default:
+			// Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
+			event := c.kafkaConsumer.Poll(100)
+			if event == nil {
+				continue
 			}
 
-			c.logger.Error("error fetching message from kafka", "error", err)
-			time.Sleep(1 * time.Second) // Prevent tight loop during broker rebalance/outage
-			continue
-		}
-
-		if err := c.processMessage(ctx, msg); err != nil {
-			c.logger.Error("failed to process message",
-				"offset", msg.Offset,
-				"partition", msg.Partition,
-				"error", err,
-			)
-			// Handle dead-letter queue (DLQ) or retry logic here
-			continue
-		}
-
-		// Commit offset AFTER processing succeeds (At-Least-Once Semantics)
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
-			c.logger.Error("failed to commit offset", "error", err)
+			if err := c.consume(ctx, event); err != nil {
+				c.logger.Error("failed to consume event", "error", err)
+				continue
+			}
 		}
 	}
 }
 
-func (c *Consumer) processMessage(ctx context.Context, msg kafka.Message) error {
+func (c *Consumer) consume(ctx context.Context, event kafka.Event) error {
+	switch e := event.(type) {
+	case *kafka.Message:
+		if err := c.process(ctx, e); err != nil {
+			c.logger.Error("failed to process kafka message",
+				"topic", *e.TopicPartition.Topic,
+				"partition", e.TopicPartition.Partition,
+				"offset", e.TopicPartition.Offset,
+				"error", err,
+			)
+			return err
+		}
+
+		if _, err := c.kafkaConsumer.CommitMessage(e); err != nil {
+			c.logger.Error("failed to commit message offset", "error", err)
+			return err
+		}
+	case kafka.Error:
+		if e.IsFatal() {
+			c.logger.Error("fatal kafka client error", "error", e)
+			return e
+		}
+		c.logger.Warn("non-fatal kafka error encountered", "error", e)
+		return e
+	default:
+		// Ignores internal events like partition assignments or rebalances
+	}
+
+	return nil
+}
+
+func (c *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 	c.logger.Info("processing message",
+		"topic", *msg.TopicPartition.Topic,
+		"partition", msg.TopicPartition.Partition,
+		"offset", msg.TopicPartition.Offset,
 		"key", string(msg.Key),
-		"offset", msg.Offset,
-		"partition", msg.Partition,
 	)
 
 	var event Event
 	if err := json.Unmarshal(msg.Value, &event); err != nil {
 		c.logger.Error("failed to unmarshal kafka message payload",
-			"offset", msg.Offset,
-			"partition", msg.Partition,
+			"offset", msg.TopicPartition.Offset,
+			"partition", msg.TopicPartition.Partition,
 			"error", err,
 		)
-		return fmt.Errorf("unmarshal error: %w", err)
+		return err
 	}
 
 	model, err := event.ToDomain()
@@ -98,6 +123,6 @@ func (c *Consumer) processMessage(ctx context.Context, msg kafka.Message) error 
 		return err
 	}
 
-	fmt.Printf("message process successfully: %+v\n", model)
+	fmt.Printf("message consume successfully: %+v\n", model)
 	return nil
 }
