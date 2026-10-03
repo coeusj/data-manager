@@ -12,8 +12,13 @@ type KafkaConfig struct {
 	GroupId string `json:"groupId"`
 }
 
+type RedisConfig struct {
+	Address string `json:"address"`
+}
+
 type Config struct {
 	Kafka KafkaConfig `json:"kafka"`
+	Redis RedisConfig `json:"redis"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -29,6 +34,9 @@ func LoadConfig(path string) (*Config, error) {
 			Brokers: "",
 			Topic:   "",
 			GroupId: "default",
+		},
+		Redis: RedisConfig{
+			Address: "",
 		},
 	}
 
@@ -51,6 +59,10 @@ func (c *Config) Validate() error {
 
 	if c.Kafka.Topic == "" {
 		return fmt.Errorf("kafka topic is missing")
+	}
+
+	if c.Redis.Address == "" {
+		return fmt.Errorf("redis address is required")
 	}
 
 	return nil

@@ -1,9 +1,21 @@
-package consumer
+package injestion
 
 import (
 	"fmt"
 	"time"
 )
+
+type EventKey struct {
+	Id        string    `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (e EventKey) ToDomain() *Key {
+	return &Key{
+		Id:        e.Id,
+		Timestamp: e.Timestamp,
+	}
+}
 
 type Event struct {
 	Id         string    `json:"id"`

@@ -3,5 +3,8 @@
         "brokers": "kafka:29092",
         "topic": "resources-events",
         "groupId": "dm-ui"
+    },
+    "redis": {
+        "address": "redis:6379"
     }
 }

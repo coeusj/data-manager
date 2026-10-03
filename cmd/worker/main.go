@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"local/data-manager/internal/configuration"
-	"local/data-manager/internal/consumer"
+	"local/data-manager/internal/injestion"
+	"local/data-manager/internal/persistence"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -44,7 +45,12 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
-	consumer, err := consumer.New(config.Kafka, logger)
+	storage, err := persistence.NewStorage(ctx, config.Redis, logger)
+	if err != nil {
+		return fmt.Errorf("could not create storage instance %w", err)
+	}
+
+	consumer, err := injestion.NewConsumer(config.Kafka, storage, logger)
 	if err != nil {
 		return err
 	}

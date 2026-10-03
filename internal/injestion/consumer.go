@@ -1,10 +1,11 @@
-package consumer
+package injestion
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"local/data-manager/internal/configuration"
+	"local/data-manager/internal/persistence"
 	"log/slog"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -13,9 +14,10 @@ import (
 type Consumer struct {
 	kafkaConsumer *kafka.Consumer
 	logger        *slog.Logger
+	storage       *persistence.Storage
 }
 
-func New(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*Consumer, error) {
+func NewConsumer(kafkaConfig configuration.KafkaConfig, storage *persistence.Storage, logger *slog.Logger) (*Consumer, error) {
 	consumerConfig := kafka.ConfigMap{
 		"bootstrap.servers":  kafkaConfig.Brokers,
 		"group.id":           kafkaConfig.GroupId,
@@ -35,6 +37,7 @@ func New(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*Consumer,
 	return &Consumer{
 		kafkaConsumer: consumer,
 		logger:        logger,
+		storage:       storage,
 	}, nil
 }
 
@@ -117,12 +120,35 @@ func (c *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 		return err
 	}
 
+	var eventKey EventKey
+	if err := json.Unmarshal(msg.Key, &eventKey); err != nil {
+		c.logger.Warn("failed to unmarshal kafka message key")
+		return err
+	}
+
 	model, err := event.ToDomain()
 	if err != nil {
 		c.logger.Error("failed to map event to domain model", "error", err)
 		return err
 	}
 
-	fmt.Printf("message consume successfully: %+v\n", model)
+	if err := c.save(ctx, eventKey, model); err != nil {
+		c.logger.Error("failed to save data into redis", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Consumer) save(ctx context.Context, eventKey EventKey, model *Model) error {
+	payload, err := json.Marshal(model)
+	if err != nil {
+		return fmt.Errorf("failed to marshal model: %v", err)
+	}
+
+	if err := c.storage.Save(ctx, eventKey.Id, payload); err != nil {
+		return err
+	}
+
 	return nil
 }

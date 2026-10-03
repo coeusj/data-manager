@@ -1,9 +1,14 @@
-package consumer
+package injestion
 
 import (
 	"errors"
 	"time"
 )
+
+type Key struct {
+	Id        string
+	Timestamp time.Time
+}
 
 type Model struct {
 	Id         string
