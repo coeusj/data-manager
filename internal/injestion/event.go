@@ -17,7 +17,7 @@ func (e EventKey) ToDomain() *Key {
 	}
 }
 
-type Event struct {
+type EventMessage struct {
 	Id         string    `json:"id"`
 	ResourceId string    `json:"resourceId"`
 	Type       string    `json:"type"`
@@ -25,8 +25,8 @@ type Event struct {
 	End        time.Time `json:"end"`
 }
 
-func (e Event) ToDomain() (*Model, error) {
-	model := &Model{
+func (e EventMessage) ToDomain() (*Message, error) {
+	model := &Message{
 		Id:         e.Id,
 		ResourceId: e.ResourceId,
 		Type:       e.Type,

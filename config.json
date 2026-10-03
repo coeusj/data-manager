@@ -5,6 +5,8 @@
         "groupId": "dm-ui"
     },
     "redis": {
-        "address": "redis:6379"
+        "address": "redis:6379",
+        "dataTTLSeconds": 300,
+        "namespace": "events"
     }
 }

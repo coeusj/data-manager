@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"local/data-manager/internal/configuration"
-	"local/data-manager/internal/persistence"
 	"log/slog"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -14,10 +13,9 @@ import (
 type Consumer struct {
 	kafkaConsumer *kafka.Consumer
 	logger        *slog.Logger
-	storage       *persistence.Storage
 }
 
-func NewConsumer(kafkaConfig configuration.KafkaConfig, storage *persistence.Storage, logger *slog.Logger) (*Consumer, error) {
+func NewConsumer(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*Consumer, error) {
 	consumerConfig := kafka.ConfigMap{
 		"bootstrap.servers":  kafkaConfig.Brokers,
 		"group.id":           kafkaConfig.GroupId,
@@ -37,11 +35,10 @@ func NewConsumer(kafkaConfig configuration.KafkaConfig, storage *persistence.Sto
 	return &Consumer{
 		kafkaConsumer: consumer,
 		logger:        logger,
-		storage:       storage,
 	}, nil
 }
 
-func (c *Consumer) Start(ctx context.Context) error {
+func (c *Consumer) Start(ctx context.Context, dataChannel chan *Payload) error {
 	defer func() {
 		c.logger.Info("closing kafka consumer connection")
 		if err := c.kafkaConsumer.Close(); err != nil {
@@ -63,7 +60,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 				continue
 			}
 
-			if err := c.consume(ctx, event); err != nil {
+			if err := c.consume(event, dataChannel); err != nil {
 				c.logger.Error("failed to consume event", "error", err)
 				continue
 			}
@@ -71,10 +68,10 @@ func (c *Consumer) Start(ctx context.Context) error {
 	}
 }
 
-func (c *Consumer) consume(ctx context.Context, event kafka.Event) error {
+func (c *Consumer) consume(event kafka.Event, dataChannel chan *Payload) error {
 	switch e := event.(type) {
 	case *kafka.Message:
-		if err := c.process(ctx, e); err != nil {
+		if err := c.process(dataChannel, e); err != nil {
 			c.logger.Error("failed to process kafka message",
 				"topic", *e.TopicPartition.Topic,
 				"partition", e.TopicPartition.Partition,
@@ -102,7 +99,7 @@ func (c *Consumer) consume(ctx context.Context, event kafka.Event) error {
 	return nil
 }
 
-func (c *Consumer) process(ctx context.Context, msg *kafka.Message) error {
+func (c *Consumer) process(dataChannel chan *Payload, msg *kafka.Message) error {
 	c.logger.Info("processing message",
 		"topic", *msg.TopicPartition.Topic,
 		"partition", msg.TopicPartition.Partition,
@@ -110,8 +107,16 @@ func (c *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 		"key", string(msg.Key),
 	)
 
-	var event Event
-	if err := json.Unmarshal(msg.Value, &event); err != nil {
+	var eventKey EventKey
+	if err := json.Unmarshal(msg.Key, &eventKey); err != nil {
+		c.logger.Warn("failed to unmarshal kafka message key")
+		return err
+	}
+
+	key := eventKey.ToDomain()
+
+	var eventMessage EventMessage
+	if err := json.Unmarshal(msg.Value, &eventMessage); err != nil {
 		c.logger.Error("failed to unmarshal kafka message payload",
 			"offset", msg.TopicPartition.Offset,
 			"partition", msg.TopicPartition.Partition,
@@ -120,34 +125,15 @@ func (c *Consumer) process(ctx context.Context, msg *kafka.Message) error {
 		return err
 	}
 
-	var eventKey EventKey
-	if err := json.Unmarshal(msg.Key, &eventKey); err != nil {
-		c.logger.Warn("failed to unmarshal kafka message key")
-		return err
-	}
-
-	model, err := event.ToDomain()
+	message, err := eventMessage.ToDomain()
 	if err != nil {
 		c.logger.Error("failed to map event to domain model", "error", err)
 		return err
 	}
 
-	if err := c.save(ctx, eventKey, model); err != nil {
-		c.logger.Error("failed to save data into redis", "error", err)
-		return err
-	}
-
-	return nil
-}
-
-func (c *Consumer) save(ctx context.Context, eventKey EventKey, model *Model) error {
-	payload, err := json.Marshal(model)
-	if err != nil {
-		return fmt.Errorf("failed to marshal model: %v", err)
-	}
-
-	if err := c.storage.Save(ctx, eventKey.Id, payload); err != nil {
-		return err
+	dataChannel <- &Payload{
+		Key:   *key,
+		Value: *message,
 	}
 
 	return nil

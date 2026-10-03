@@ -13,7 +13,9 @@ type KafkaConfig struct {
 }
 
 type RedisConfig struct {
-	Address string `json:"address"`
+	Address        string `json:"address"`
+	NameSpace      string `json:"namespace"`
+	DataTTLSeconds uint   `json:"dataTTLSeconds"`
 }
 
 type Config struct {
@@ -36,7 +38,9 @@ func LoadConfig(path string) (*Config, error) {
 			GroupId: "default",
 		},
 		Redis: RedisConfig{
-			Address: "",
+			Address:        "",
+			NameSpace:      "",
+			DataTTLSeconds: 0,
 		},
 	}
 
@@ -63,6 +67,10 @@ func (c *Config) Validate() error {
 
 	if c.Redis.Address == "" {
 		return fmt.Errorf("redis address is required")
+	}
+
+	if c.Redis.NameSpace == "" {
+		return fmt.Errorf("redis namespace is missing")
 	}
 
 	return nil

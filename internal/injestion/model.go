@@ -5,12 +5,17 @@ import (
 	"time"
 )
 
+type Payload struct {
+	Key   Key
+	Value Message
+}
+
 type Key struct {
 	Id        string
 	Timestamp time.Time
 }
 
-type Model struct {
+type Message struct {
 	Id         string
 	ResourceId string
 	Type       string
@@ -18,7 +23,7 @@ type Model struct {
 	End        time.Time
 }
 
-func (c *Model) Validate() error {
+func (c *Message) Validate() error {
 	if c.Id == "" {
 		return errors.New("model without ID")
 	}

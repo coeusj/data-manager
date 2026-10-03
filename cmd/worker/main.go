@@ -45,19 +45,25 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
+	dataChannel := make(chan *injestion.Payload, 5000) // TODO: config for buffer capacity
+
 	storage, err := persistence.NewStorage(ctx, config.Redis, logger)
 	if err != nil {
 		return fmt.Errorf("could not create storage instance %w", err)
 	}
 
-	consumer, err := injestion.NewConsumer(config.Kafka, storage, logger)
+	worker := persistence.NewWorker(storage, logger)
+	go worker.Start(ctx, dataChannel)
+
+	consumer, err := injestion.NewConsumer(config.Kafka, logger)
 	if err != nil {
 		return err
 	}
 
-	if err := consumer.Start(ctx); err != nil {
+	if err := consumer.Start(ctx, dataChannel); err != nil {
 		return fmt.Errorf("could not start consumer: %w", err)
 	}
 
+	close(dataChannel)
 	return nil
 }
