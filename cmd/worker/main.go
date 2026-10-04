@@ -45,7 +45,7 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
-	dataChannel := make(chan *injestion.Payload, 5000) // TODO: config for buffer capacity
+	dataChannel := make(chan *injestion.Payload, 5000)
 
 	storage, err := persistence.NewStorage(ctx, config.Redis, logger)
 	if err != nil {

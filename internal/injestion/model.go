@@ -6,8 +6,9 @@ import (
 )
 
 type Payload struct {
-	Key   Key
-	Value Message
+	Key       Key
+	Value     Message
+	OnSuccess func()
 }
 
 type Key struct {

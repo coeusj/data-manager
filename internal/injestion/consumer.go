@@ -11,8 +11,8 @@ import (
 )
 
 type Consumer struct {
-	kafkaConsumer *kafka.Consumer
-	logger        *slog.Logger
+	kConsumer *kafka.Consumer
+	logger    *slog.Logger
 }
 
 func NewConsumer(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*Consumer, error) {
@@ -33,15 +33,15 @@ func NewConsumer(kafkaConfig configuration.KafkaConfig, logger *slog.Logger) (*C
 	}
 
 	return &Consumer{
-		kafkaConsumer: consumer,
-		logger:        logger,
+		kConsumer: consumer,
+		logger:    logger,
 	}, nil
 }
 
-func (c *Consumer) Start(ctx context.Context, dataChannel chan *Payload) error {
+func (c *Consumer) Start(ctx context.Context, dataChannel chan<- *Payload) error {
 	defer func() {
 		c.logger.Info("closing kafka consumer connection")
-		if err := c.kafkaConsumer.Close(); err != nil {
+		if err := c.kConsumer.Close(); err != nil {
 			c.logger.Error("failed to close kafka consumer cleanly", "error", err)
 		}
 	}()
@@ -55,7 +55,7 @@ func (c *Consumer) Start(ctx context.Context, dataChannel chan *Payload) error {
 			return nil
 		default:
 			// Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
-			event := c.kafkaConsumer.Poll(100)
+			event := c.kConsumer.Poll(100)
 			if event == nil {
 				continue
 			}
@@ -68,7 +68,8 @@ func (c *Consumer) Start(ctx context.Context, dataChannel chan *Payload) error {
 	}
 }
 
-func (c *Consumer) consume(event kafka.Event, dataChannel chan *Payload) error {
+func (c *Consumer) consume(event kafka.Event, dataChannel chan<- *Payload) error {
+	// TODO: CHECK HOW TO GET KAFKA TOMBSTONES AND MESSAGE "DELETION"
 	switch e := event.(type) {
 	case *kafka.Message:
 		if err := c.process(dataChannel, e); err != nil {
@@ -78,11 +79,6 @@ func (c *Consumer) consume(event kafka.Event, dataChannel chan *Payload) error {
 				"offset", e.TopicPartition.Offset,
 				"error", err,
 			)
-			return err
-		}
-
-		if _, err := c.kafkaConsumer.CommitMessage(e); err != nil {
-			c.logger.Error("failed to commit message offset", "error", err)
 			return err
 		}
 	case kafka.Error:
@@ -99,7 +95,7 @@ func (c *Consumer) consume(event kafka.Event, dataChannel chan *Payload) error {
 	return nil
 }
 
-func (c *Consumer) process(dataChannel chan *Payload, msg *kafka.Message) error {
+func (c *Consumer) process(dataChannel chan<- *Payload, msg *kafka.Message) error {
 	c.logger.Info("processing message",
 		"topic", *msg.TopicPartition.Topic,
 		"partition", msg.TopicPartition.Partition,
@@ -113,8 +109,6 @@ func (c *Consumer) process(dataChannel chan *Payload, msg *kafka.Message) error 
 		return err
 	}
 
-	key := eventKey.ToDomain()
-
 	var eventMessage EventMessage
 	if err := json.Unmarshal(msg.Value, &eventMessage); err != nil {
 		c.logger.Error("failed to unmarshal kafka message payload",
@@ -125,6 +119,7 @@ func (c *Consumer) process(dataChannel chan *Payload, msg *kafka.Message) error 
 		return err
 	}
 
+	key := eventKey.ToDomain()
 	message, err := eventMessage.ToDomain()
 	if err != nil {
 		c.logger.Error("failed to map event to domain model", "error", err)
@@ -134,6 +129,12 @@ func (c *Consumer) process(dataChannel chan *Payload, msg *kafka.Message) error 
 	dataChannel <- &Payload{
 		Key:   *key,
 		Value: *message,
+		OnSuccess: func() {
+			if _, err := c.kConsumer.CommitMessage(msg); err != nil {
+				c.logger.Error("failed to commit message offset", "error", err)
+			}
+			c.logger.Info("message commited")
+		},
 	}
 
 	return nil
