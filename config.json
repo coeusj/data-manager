@@ -6,7 +6,7 @@
     },
     "redis": {
         "address": "redis:6379",
-        "dataTTLSeconds": 300,
+        "dataTTLSeconds": 1200,
         "namespace": "events"
     }
 }

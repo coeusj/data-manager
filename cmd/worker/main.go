@@ -23,7 +23,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	opts := &slog.HandlerOptions{
+		AddSource: true,
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
 	logger.Info("starting background worker..")
 
 	if err := start(ctx, logger); err != nil {
@@ -52,15 +55,15 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not create storage instance %w", err)
 	}
 
-	worker := persistence.NewWorker(storage, logger)
-	go worker.Start(ctx, dataChannel)
+	backgroundWorker := persistence.NewBackgroundWorker(storage, logger)
+	go backgroundWorker.Start(ctx, dataChannel)
 
-	consumer, err := injestion.NewConsumer(config.Kafka, logger)
+	kafkaConsumer, err := injestion.NewKafkaConsumer(config.Kafka, dataChannel, logger)
 	if err != nil {
 		return err
 	}
 
-	if err := consumer.Start(ctx, dataChannel); err != nil {
+	if err := kafkaConsumer.Start(ctx); err != nil {
 		return fmt.Errorf("could not start consumer: %w", err)
 	}
 

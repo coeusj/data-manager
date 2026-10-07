@@ -36,18 +36,18 @@ docker compose -f .\docker-compose.yml up -d
 Key:
 ```json
 {
-    "id": "event_id",
-    "timestamp": "2026-10-01T15:04:05+00:00"
+    "id": "${random.uuid}",
+    "timestamp": "${current.datetime:yyyy'-'MM'-'dd'T'HH:mm:ss'+00:00'}"
 }
 ```
 Value:
 ```json
 {
-    "id": "event_id",
-    "resourceId": "resource_id",
+    "id": "${random.uuid}",
+    "resourceId": "${random.string:10:20}",
     "type": "event_type",
-    "start": "2026-10-01T15:04:05+00:00",
-    "end": "2026-10-01T17:04:05+00:00"
+    "start": "${current.datetime:yyyy'-'MM'-'dd'T'HH:mm:ss'+00:00'}",
+    "end": "${current.datetime:yyyy'-'MM'-'dd'T'HH:mm:ss'+00:00'}"
 }
 ```
 

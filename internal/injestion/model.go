@@ -6,8 +6,9 @@ import (
 )
 
 type Payload struct {
-	Key       Key
-	Value     Message
+	Key       *Key
+	Value     *Message
+	IsDelete  bool
 	OnSuccess func()
 }
 
