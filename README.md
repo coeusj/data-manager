@@ -30,6 +30,11 @@ docker compose -f .\docker-compose.yml up -d
 }
 ```
 
+### Compile Protobuffs
+```bash
+protoc --proto_path=api/proto --go_out=gen/go --go_opt=paths=source_relative api/proto/event/v1/event.proto
+```
+
 ## Debug
 
 #### Kafka event example

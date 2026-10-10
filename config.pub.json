@@ -1,0 +1,10 @@
+{
+    "kafka": {
+        "brokers": "kafka:29092",
+        "topic": "resources-events"
+    },
+    "sender": {
+        "tickMs": 500,
+        "durationSeconds": 10
+    }
+}

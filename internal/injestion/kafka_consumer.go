@@ -2,12 +2,14 @@ package injestion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	v1 "local/data-manager/gen/go/event/v1"
 	"local/data-manager/internal/configuration"
 	"log/slog"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"google.golang.org/protobuf/proto"
 )
 
 type KafkaConsumer struct {
@@ -105,45 +107,42 @@ func (c *KafkaConsumer) process(msg *kafka.Message) error {
 	)
 
 	if msg.Value == nil {
-		if err := c.processRemove(msg); err != nil {
+		if err := c.remove(msg); err != nil {
 			return err
 		}
 		return nil
 	}
 
-	if err := c.processUpdate(msg); err != nil {
+	if err := c.update(msg); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *KafkaConsumer) processUpdate(msg *kafka.Message) error {
-	var eventKey EventKey
-	if err := json.Unmarshal(msg.Key, &eventKey); err != nil {
-		c.logger.Warn("failed to unmarshal kafka message key")
-		return err
+func (c *KafkaConsumer) update(msg *kafka.Message) error {
+	var eventKey v1.PBEventKey
+	if err := proto.Unmarshal(msg.Key, &eventKey); err != nil {
+		return fmt.Errorf("failed to unmarshal protobuff payload 'msg.Key'")
 	}
 
-	var eventMessage EventMessage
-	if err := json.Unmarshal(msg.Value, &eventMessage); err != nil {
-		c.logger.Error("failed to unmarshal kafka message payload",
-			"offset", msg.TopicPartition.Offset,
-			"partition", msg.TopicPartition.Partition,
-			"error", err,
-		)
-		return err
-	}
-
-	message, err := eventMessage.ToDomain()
-	if err != nil {
-		c.logger.Error("failed to map event to domain model", "error", err)
-		return err
+	var eventMesage v1.PBEventMessage
+	if err := proto.Unmarshal(msg.Value, &eventMesage); err != nil {
+		return fmt.Errorf("failed to unmarshal protobuff payload 'msg.Value'")
 	}
 
 	c.dataChannel <- &Payload{
-		Key:      eventKey.ToDomain(),
-		Value:    message,
+		Key: &Key{
+			Id:        eventKey.EventId,
+			Timestamp: time.Unix(eventKey.Timestamp, 0).UTC(),
+		},
+		Value: &Message{
+			Id:         eventMesage.EventId,
+			ResourceId: eventMesage.ResourceId,
+			Type:       eventMesage.Type,
+			Start:      time.Unix(eventMesage.Start, 0).UTC(),
+			End:        time.Unix(eventMesage.End, 0).UTC().UTC(),
+		},
 		IsDelete: false,
 		OnSuccess: func() {
 			if _, err := c.kConsumer.CommitMessage(msg); err != nil {
@@ -157,15 +156,17 @@ func (c *KafkaConsumer) processUpdate(msg *kafka.Message) error {
 	return nil
 }
 
-func (c *KafkaConsumer) processRemove(msg *kafka.Message) error {
-	var eventKey EventKey
-	if err := json.Unmarshal(msg.Key, &eventKey); err != nil {
-		c.logger.Warn("failed to unmarshal kafka message key")
-		return err
+func (c *KafkaConsumer) remove(msg *kafka.Message) error {
+	var eventKey v1.PBEventKey
+	if err := proto.Unmarshal(msg.Key, &eventKey); err != nil {
+		return fmt.Errorf("failed to unmarshal protobuff payload 'msg.Key'")
 	}
 
 	c.dataChannel <- &Payload{
-		Key:      eventKey.ToDomain(),
+		Key: &Key{
+			Id:        eventKey.EventId,
+			Timestamp: time.Unix(eventKey.Timestamp, 0).UTC(),
+		},
 		Value:    &Message{},
 		IsDelete: true,
 		OnSuccess: func() {

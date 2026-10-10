@@ -43,14 +43,14 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		os.Exit(1)
 	}
 
-	config, err := configuration.LoadConfig(configPath)
+	config, err := configuration.LoadWorkerConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
 	dataChannel := make(chan *injestion.Payload, 5000)
 
-	storage, err := persistence.NewStorage(ctx, config.Redis, logger)
+	storage, err := persistence.NewRedisStorage(ctx, config.Redis, logger)
 	if err != nil {
 		return fmt.Errorf("could not create storage instance %w", err)
 	}

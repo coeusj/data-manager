@@ -1,4 +1,4 @@
-FROM golang:1.25.5-alpine AS builder
+FROM golang:1.26.0-alpine AS builder
 
 # Install build dependencies required for CGO and librdkafka on musl
 RUN apk add --no-cache \
@@ -38,7 +38,7 @@ WORKDIR /app
 
 # Copy binary and config WITH appuser ownership
 COPY --chown=10001:10001 --from=builder /app/bin/worker .
-COPY --chown=10001:10001 config.json /app/config.json
+COPY --chown=10001:10001 config.worker.json /app/config.json
 
 ENV DM_CONFIG_PATH=/app/config.json
 

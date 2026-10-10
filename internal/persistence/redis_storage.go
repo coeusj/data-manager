@@ -10,14 +10,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type Storage struct {
+type RedisStorage struct {
 	rdbClient      *redis.Client
 	logger         *slog.Logger
 	namespace      string
 	dataTTLSeconds time.Duration
 }
 
-func NewStorage(ctx context.Context, config configuration.RedisConfig, logger *slog.Logger) (*Storage, error) {
+func NewRedisStorage(ctx context.Context, config configuration.RedisConfig, logger *slog.Logger) (*RedisStorage, error) {
 	rdbClient := redis.NewClient(&redis.Options{
 		Addr:     config.Address,
 		Password: "",
@@ -30,7 +30,7 @@ func NewStorage(ctx context.Context, config configuration.RedisConfig, logger *s
 
 	logger.Info("connected to redis")
 
-	return &Storage{
+	return &RedisStorage{
 		rdbClient:      rdbClient,
 		logger:         logger,
 		namespace:      config.NameSpace,
@@ -38,7 +38,7 @@ func NewStorage(ctx context.Context, config configuration.RedisConfig, logger *s
 	}, nil
 }
 
-func (s *Storage) Save(ctx context.Context, id string, value []byte) error {
+func (s *RedisStorage) Save(ctx context.Context, id string, value []byte) error {
 	key := fmt.Sprintf("%s:%s", s.namespace, id)
 
 	if id == "" {
@@ -59,7 +59,7 @@ func (s *Storage) Save(ctx context.Context, id string, value []byte) error {
 	return nil
 }
 
-func (s *Storage) Delete(ctx context.Context, id string) error {
+func (s *RedisStorage) Delete(ctx context.Context, id string) error {
 	key := fmt.Sprintf("%s:%s", s.namespace, id)
 	if err := s.rdbClient.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("failed to delete data: %w", err)

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package event.v1;
+option go_package = "gen/go/event/v1";
+
+message PBEventMessage {
+  string event_id    = 1;
+  string resource_id = 2;
+  string type        = 3;
+  int64 start        = 4;
+  int64 end          = 5;
+}
+
+message PBEventKey {
+  string event_id = 1;
+  int64 timestamp = 2;
+}

@@ -9,11 +9,11 @@ import (
 )
 
 type BackgroundWorker struct {
-	storage *Storage
+	storage *RedisStorage
 	logger  *slog.Logger
 }
 
-func NewBackgroundWorker(storage *Storage, logger *slog.Logger) *BackgroundWorker {
+func NewBackgroundWorker(storage *RedisStorage, logger *slog.Logger) *BackgroundWorker {
 	return &BackgroundWorker{
 		storage: storage,
 		logger:  logger,
