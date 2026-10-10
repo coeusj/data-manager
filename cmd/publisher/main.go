@@ -4,10 +4,10 @@ import (
 	"context"
 	v1 "local/data-manager/gen/go/event/v1"
 	"local/data-manager/internal/configuration"
+	"local/data-manager/internal/producer"
 	"log/slog"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -26,16 +26,12 @@ func main() {
 
 	var ctx = context.Background()
 
-	kafkaConfig := sarama.NewConfig()
-	kafkaConfig.Producer.RequiredAcks = sarama.WaitForAll
-	kafkaConfig.Producer.Retry.Max = 5
-	kafkaConfig.Producer.Return.Successes = true
-	kafkaConfig.Producer.Partitioner = sarama.NewHashPartitioner
-	asyncProducer, err := sarama.NewAsyncProducer(strings.Split("localhost:9092", ","), kafkaConfig)
+	kProducer, err := producer.NewKafkaProducer(config.Kafka, logger)
 	if err != nil {
-		logger.Error("could not create Kafka Producer", "error", err)
+		logger.Error("could not create kafka producer")
+		os.Exit(1)
 	}
-	defer asyncProducer.Close()
+	defer kProducer.Close()
 
 	duration := time.Second * time.Duration(config.Sender.DurationSeconds)
 	deadline := time.Now().Add(duration)
@@ -76,20 +72,11 @@ func main() {
 				Value: sarama.ByteEncoder(valueProto),
 			}
 
-			asyncProducer.Input() <- msg
-
-			select {
-			case success := <-asyncProducer.Successes():
-				logger.Info("data sent", "partition", success.Partition, "offset", success.Offset)
-				count++
+			if err := kProducer.Send(ctx, msg); err != nil {
+				logger.Error("could not send message", "error", err)
 				continue
-			case err := <-asyncProducer.Errors():
-				logger.Error("error while trying to send message", "error", err)
-				continue
-			case <-ctx.Done():
-				logger.Warn("operation cancelled")
-				return
 			}
+			count++
 		}
 	}
 }

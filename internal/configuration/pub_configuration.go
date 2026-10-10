@@ -7,8 +7,8 @@ import (
 )
 
 type SenderConfig struct {
-	TickMs          uint `json:"tickMs"`
-	DurationSeconds uint `json:"durationSeconds"`
+	TickMs          float32 `json:"tickMs"`
+	DurationSeconds float32 `json:"durationSeconds"`
 }
 
 type PublisherConfig struct {
@@ -55,6 +55,14 @@ func (c *PublisherConfig) Validate() error {
 
 	if c.Kafka.Topic == "" {
 		return fmt.Errorf("kafka topic is missing")
+	}
+
+	if c.Sender.DurationSeconds < 1 {
+		return fmt.Errorf("duration should be a positive number")
+	}
+
+	if c.Sender.TickMs < 1 {
+		return fmt.Errorf("tick should be a postive number")
 	}
 
 	return nil
