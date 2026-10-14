@@ -29,6 +29,7 @@ func LoadWorkerConfig(path string) (*WorkerConfig, error) {
 			Address:        "",
 			NameSpace:      "",
 			DataTTLSeconds: 0,
+			DB:             0,
 		},
 	}
 

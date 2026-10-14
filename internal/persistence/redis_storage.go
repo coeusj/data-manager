@@ -21,7 +21,7 @@ func NewRedisStorage(ctx context.Context, config configuration.RedisConfig, logg
 	rdbClient := redis.NewClient(&redis.Options{
 		Addr:     config.Address,
 		Password: "",
-		DB:       0, // Default DB
+		DB:       config.DB,
 	})
 
 	if err := rdbClient.Ping(ctx).Err(); err != nil {

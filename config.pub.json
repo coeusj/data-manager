@@ -3,8 +3,13 @@
         "brokers": "localhost:9092",
         "topic": "resources-events"
     },
-    "sender": {
+    "genLoop": {
         "tickMs": 1,
         "durationSeconds": 1
+    },
+    "producer": {
+        "useBatch": false,
+        "batchSize": 500,
+        "flushFrequencyMs": 100
     }
 }

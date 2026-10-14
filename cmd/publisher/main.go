@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -24,26 +25,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	var ctx = context.Background()
+	duration := time.Second * time.Duration(config.GenLoop.DurationSeconds)
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
 
-	kProducer, err := producer.NewKafkaProducer(config.Kafka, logger)
+	kProducer, err := producer.NewProducer(config.Producer.UseBatch, config.Kafka, config.Producer, logger)
 	if err != nil {
 		logger.Error("could not create kafka producer")
 		os.Exit(1)
 	}
-	defer kProducer.Close()
+	wg := &sync.WaitGroup{}
+	kProducer.Start(ctx, wg)
+	defer kProducer.Stop()
 
-	duration := time.Second * time.Duration(config.Sender.DurationSeconds)
-	deadline := time.Now().Add(duration)
-	ticker := time.NewTicker(time.Millisecond * time.Duration(config.Sender.TickMs))
-
+	ticker := time.NewTicker(time.Millisecond * time.Duration(config.GenLoop.TickMs))
 	defer ticker.Stop()
 	count := 0
-	for time.Now().Before(deadline) {
+
+generationLoop:
+	for {
 		select {
 		case <-ctx.Done():
-			logger.Warn("context cancelled")
-			os.Exit(1)
+			logger.Warn("generation loop done")
+			break generationLoop
 		case <-ticker.C:
 			keyProto, err := proto.Marshal(&v1.PBEventKey{
 				EventId:   "event-" + strconv.Itoa(count),
@@ -79,4 +83,7 @@ func main() {
 			count++
 		}
 	}
+
+	kProducer.Stop()
+	wg.Wait()
 }

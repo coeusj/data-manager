@@ -6,14 +6,21 @@ import (
 	"os"
 )
 
-type SenderConfig struct {
+type GenLoopConfig struct {
 	TickMs          float32 `json:"tickMs"`
 	DurationSeconds float32 `json:"durationSeconds"`
 }
 
+type ProducerConfig struct {
+	UseBatch         bool `json:"useBatch"`
+	BatchSize        int  `json:"batchSize"`
+	FlushFrequencyMs uint `json:"flushFrequencyMs"`
+}
+
 type PublisherConfig struct {
-	Kafka  KafkaConfig  `json:"kafka"`
-	Sender SenderConfig `json:"sender"`
+	Kafka    KafkaConfig    `json:"kafka"`
+	GenLoop  GenLoopConfig  `json:"genLoop"`
+	Producer ProducerConfig `json:"producer"`
 }
 
 func LoadPublisherConfig(path string) (*PublisherConfig, error) {
@@ -30,9 +37,14 @@ func LoadPublisherConfig(path string) (*PublisherConfig, error) {
 			Topic:   "",
 			GroupId: "",
 		},
-		Sender: SenderConfig{
+		GenLoop: GenLoopConfig{
 			TickMs:          1000,
 			DurationSeconds: 1,
+		},
+		Producer: ProducerConfig{
+			UseBatch:         false,
+			BatchSize:        0,
+			FlushFrequencyMs: 50,
 		},
 	}
 
@@ -57,12 +69,16 @@ func (c *PublisherConfig) Validate() error {
 		return fmt.Errorf("kafka topic is missing")
 	}
 
-	if c.Sender.DurationSeconds < 1 {
+	if c.GenLoop.DurationSeconds < 1 {
 		return fmt.Errorf("duration should be a positive number")
 	}
 
-	if c.Sender.TickMs < 1 {
+	if c.GenLoop.TickMs < 1 {
 		return fmt.Errorf("tick should be a postive number")
+	}
+
+	if c.Producer.UseBatch && c.Producer.BatchSize < 1 {
+		return fmt.Errorf("batch size should be a positive number")
 	}
 
 	return nil

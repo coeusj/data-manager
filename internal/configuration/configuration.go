@@ -10,4 +10,5 @@ type RedisConfig struct {
 	Address        string `json:"address"`
 	NameSpace      string `json:"namespace"`
 	DataTTLSeconds uint   `json:"dataTTLSeconds"`
+	DB             int    `json:"db"`
 }

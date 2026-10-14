@@ -1,7 +1,7 @@
 ## Data Manager
 Data Injestion Worker
 
-### Docker Compose
+#### Docker Compose
 This compose sets up:
 - Kafka
 - Creates Kafka topics
@@ -11,10 +11,10 @@ This compose sets up:
 docker compose -f .\docker-compose.yml up -d
 ```
 
-### Worker's env variables
+#### Worker's env variables
 - DM_CONFIG_PATH
 
-### Configuration file
+#### Worker's Configuration file
 ```json
 {
     "kafka": {
@@ -30,7 +30,7 @@ docker compose -f .\docker-compose.yml up -d
 }
 ```
 
-### Compile Protobuffs
+#### Compile Protobuffs
 ```bash
 protoc --proto_path=api/proto --go_out=gen/go --go_opt=paths=source_relative api/proto/event/v1/event.proto
 ```
@@ -56,8 +56,33 @@ Value:
 }
 ```
 
+#### Run Publisher
+Run this to send data to the kafka topic
+```bash
+go run .\cmd\publisher\main.go
+```
+
+#### Publisher's Configuration file
+```json
+{
+    "kafka": {
+        "brokers": "localhost:9092",
+        "topic": "resources-events"
+    },
+    "genLoop": {
+        "tickMs": 1,
+        "durationSeconds": 1
+    },
+    "producer": {
+        "useBatch": false,
+        "batchSize": 500,
+        "flushFrequencyMs": 100
+    }
+}
+```
+
 #### Redis CLI
-Run this to check/debug  Redis instance
+Run this to check/debug Redis instance
 ```bash
 docker compose exec redis redis-cli
 ```
