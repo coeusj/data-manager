@@ -4,7 +4,7 @@
         "topic": "resources-events"
     },
     "genLoop": {
-        "tickMs": 1,
+        "tickMs": 500,
         "durationSeconds": 1
     },
     "producer": {

@@ -66,7 +66,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ./cmd/worker/Dockerfile
     container_name: data-manager-worker
     depends_on:
       kafka:
@@ -77,6 +77,19 @@ services:
         condition: service_healthy
     environment:
       DM_CONFIG_PATH: "/app/config.json"
+    networks:
+      - data-manager-net
+
+  api:
+    build:
+      context: .
+      dockerfile: ./cmd/api/Dockerfile
+    container_name: data-manager-api
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - data-manager-net
 

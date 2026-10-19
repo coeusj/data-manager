@@ -26,7 +26,7 @@ RUN go build \
     -ldflags="-s -w" \
     -o /app/bin/worker ./cmd/worker
 
-FROM alpine:3.19
+FROM alpine:3.20
 
 # Install runtime librdkafka dependency, TLS certificates, and timezones
 RUN apk add --no-cache \
