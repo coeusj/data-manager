@@ -10,6 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type Repository interface {
+	Save(ctx context.Context, id string, value []byte) error
+	Delete(ctx context.Context, id string) error
+}
+
 type RedisStorage struct {
 	rdbClient      *redis.Client
 	logger         *slog.Logger

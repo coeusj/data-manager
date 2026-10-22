@@ -38,7 +38,7 @@ func NewKafkaBatchProducer(kafkaConfig configuration.KafkaConfig, conf configura
 	return &KafkaBatchProducer{
 		kProducer:           kProducer,
 		batchSize:           conf.BatchSize,
-		channel:             make(chan *sarama.ProducerMessage, 1000),
+		channel:             make(chan *sarama.ProducerMessage, conf.BatchSize),
 		autoSendFrequencyMs: time.Duration(conf.FlushFrequencyMs),
 		started:             false,
 		logger:              logger,
@@ -69,9 +69,11 @@ func (k *KafkaBatchProducer) Start(ctx context.Context, wg *sync.WaitGroup) erro
 				return
 			}
 
+			k.logger.Info("start batch publish")
 			err := k.kProducer.SendMessages(buffer)
 			if err != nil {
 				k.logger.Error("failed to publish message batch", "error", err)
+				// TODO: retry
 			} else {
 				k.logger.Info("send messages batch", "count", len(buffer))
 			}

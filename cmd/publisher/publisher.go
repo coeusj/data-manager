@@ -84,6 +84,6 @@ generationLoop:
 		}
 	}
 
-	kProducer.Stop()
 	wg.Wait()
+	kProducer.Stop()
 }

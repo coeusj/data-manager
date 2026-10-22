@@ -68,6 +68,8 @@ services:
       context: .
       dockerfile: ./cmd/worker/Dockerfile
     container_name: data-manager-worker
+    ports:
+      - "8989:8989"
     depends_on:
       kafka:
         condition: service_healthy

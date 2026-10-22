@@ -46,4 +46,6 @@ ENV DM_CONFIG_PATH=/app/config.json
 RUN adduser -D -u 10001 appuser
 USER appuser
 
+EXPOSE 8989
+
 ENTRYPOINT ["./worker"]

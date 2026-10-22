@@ -1,56 +1,78 @@
 package websocket
 
 import (
+	"context"
 	"log/slog"
 	"sync"
+	"time"
+
+	"github.com/coder/websocket"
 )
 
 type Hub struct {
-	clients    map[*Client]bool
+	clients    map[*websocket.Conn]bool
 	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	mu         sync.Mutex
+	register   chan *websocket.Conn
+	unregister chan *websocket.Conn
 	logger     *slog.Logger
+	mu         sync.Mutex
 }
 
 func NewHub(logger *slog.Logger) *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
+		clients:    make(map[*websocket.Conn]bool),
 		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		register:   make(chan *websocket.Conn),
+		unregister: make(chan *websocket.Conn),
 		logger:     logger,
 	}
 }
 
-func (h *Hub) Run() {
+func (h *Hub) Run(ctx context.Context) {
+	h.logger.Info("Hub running")
 	for {
 		select {
-		case client := <-h.register:
+		case conn := <-h.register:
 			h.mu.Lock()
-			h.clients[client] = true
+			h.clients[conn] = true
+			h.logger.Info("client registered")
 			h.mu.Unlock()
-			h.logger.Info("client connected")
-		case client := <-h.unregister:
+		case conn := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
+			if _, ok := h.clients[conn]; ok {
+				delete(h.clients, conn)
+				conn.Close(websocket.StatusNormalClosure, "unregistered")
+				h.logger.Info("client unregistered")
 			}
 			h.mu.Unlock()
-			h.logger.Info("client disconnected")
-		case message := <-h.broadcast:
+		case msg := <-h.broadcast:
+			// TODO: consider batch send
+			h.logger.Info("received message to broadcast")
 			h.mu.Lock()
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
+			for conn := range h.clients {
+				wCtx, cancel := context.WithTimeout(ctx, time.Second*3)
+				err := conn.Write(wCtx, websocket.MessageBinary, msg)
+				cancel()
+				if err != nil {
+					conn.Close(websocket.StatusInternalError, "failed write")
+					delete(h.clients, conn)
 				}
 			}
+			h.logger.Info("message broadcasted")
 			h.mu.Unlock()
 		}
 	}
+}
+
+func (h *Hub) Register(conn *websocket.Conn) {
+	h.register <- conn
+}
+
+func (h *Hub) UnRegister(conn *websocket.Conn) {
+	h.register <- conn
+}
+
+func (h *Hub) Send(msg []byte) {
+	h.broadcast <- msg
+	h.logger.Debug("add message in broadcast buffer")
 }

@@ -4,12 +4,12 @@
         "topic": "resources-events"
     },
     "genLoop": {
-        "tickMs": 500,
-        "durationSeconds": 1
+        "tickMs": 1,
+        "durationSeconds": 3
     },
     "producer": {
-        "useBatch": false,
-        "batchSize": 500,
-        "flushFrequencyMs": 100
+        "useBatch": true,
+        "batchSize": 1000,
+        "flushFrequencyMs": 60000
     }
 }

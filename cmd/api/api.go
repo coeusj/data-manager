@@ -1,7 +1,7 @@
 package main
 
 import (
-	"local/data-manager/internal/repository"
+	"local/data-manager/internal/handlers"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,11 +11,11 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	logger.Info("publisher starting")
+	logger.Info("api starting")
 
 	router := gin.Default()
 	router.GET("/events", func(ctx *gin.Context) {
-		res, err := repository.GetEventsHandler(ctx, logger)
+		res, err := handlers.GetEventsHandler(ctx, logger)
 		if err != nil {
 			logger.Error("error while processing request", "error", err)
 		}

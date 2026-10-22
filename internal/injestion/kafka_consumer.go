@@ -5,6 +5,7 @@ import (
 	"fmt"
 	v1 "local/data-manager/gen/go/event/v1"
 	"local/data-manager/internal/configuration"
+	"local/data-manager/internal/websocket"
 	"log/slog"
 	"time"
 
@@ -15,10 +16,15 @@ import (
 type KafkaConsumer struct {
 	kConsumer   *kafka.Consumer
 	dataChannel chan<- *Payload
+	hub         *websocket.Hub
 	logger      *slog.Logger
 }
 
-func NewKafkaConsumer(kafkaConfig configuration.KafkaConfig, dataChannel chan<- *Payload, logger *slog.Logger) (*KafkaConsumer, error) {
+func NewKafkaConsumer(
+	kafkaConfig configuration.KafkaConfig,
+	dataChannel chan<- *Payload,
+	hub *websocket.Hub,
+	logger *slog.Logger) (*KafkaConsumer, error) {
 	consumerConfig := kafka.ConfigMap{
 		"bootstrap.servers":  kafkaConfig.Brokers,
 		"group.id":           kafkaConfig.GroupId,
@@ -38,6 +44,7 @@ func NewKafkaConsumer(kafkaConfig configuration.KafkaConfig, dataChannel chan<- 
 	return &KafkaConsumer{
 		kConsumer:   consumer,
 		dataChannel: dataChannel,
+		hub:         hub,
 		logger:      logger,
 	}, nil
 }
@@ -148,6 +155,7 @@ func (c *KafkaConsumer) update(msg *kafka.Message) error {
 			if _, err := c.kConsumer.CommitMessage(msg); err != nil {
 				c.logger.Error("failed to commit message offset", "error", err)
 			}
+			c.hub.Send(msg.Value)
 			c.logger.Info("message commited")
 		},
 	}
