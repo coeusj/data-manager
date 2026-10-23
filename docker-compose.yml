@@ -63,11 +63,11 @@ services:
     networks:
       - data-manager-net
 
-  worker:
+  reader:
     build:
       context: .
-      dockerfile: ./cmd/worker/Dockerfile
-    container_name: data-manager-worker
+      dockerfile: ./cmd/reader/Dockerfile
+    container_name: data-manager-reader
     ports:
       - "8989:8989"
     depends_on:

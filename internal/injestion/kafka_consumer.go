@@ -14,10 +14,12 @@ import (
 )
 
 type KafkaConsumer struct {
-	kConsumer   *kafka.Consumer
-	dataChannel chan<- *Payload
-	hub         *websocket.Hub
-	logger      *slog.Logger
+	kConsumer     *kafka.Consumer
+	topic         *string
+	pollTimeoutMs int
+	dataChannel   chan<- *Payload
+	hub           *websocket.Hub
+	logger        *slog.Logger
 }
 
 func NewKafkaConsumer(
@@ -29,44 +31,40 @@ func NewKafkaConsumer(
 		"bootstrap.servers":  kafkaConfig.Brokers,
 		"group.id":           kafkaConfig.GroupId,
 		"auto.offset.reset":  "earliest",
-		"enable.auto.commit": false, // Disable auto-commit for at-least-once semantics
+		"enable.auto.commit": false,
 	}
 
 	consumer, err := kafka.NewConsumer(&consumerConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
+		return nil, err
 	}
 
 	if err := consumer.Subscribe(kafkaConfig.Topic, nil); err != nil {
-		return nil, fmt.Errorf("failed to subscribe to topic: %w", err)
+		return nil, err
 	}
 
 	return &KafkaConsumer{
-		kConsumer:   consumer,
-		dataChannel: dataChannel,
-		hub:         hub,
-		logger:      logger,
+		kConsumer:     consumer,
+		topic:         &kafkaConfig.Topic,
+		pollTimeoutMs: 100, // Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
+		dataChannel:   dataChannel,
+		hub:           hub,
+		logger:        logger,
 	}, nil
 }
 
-func (c *KafkaConsumer) Start(ctx context.Context) error {
-	defer func() {
-		c.logger.Info("closing connection")
-		if err := c.kConsumer.Close(); err != nil {
-			c.logger.Error("failed to close kafka consumer cleanly", "error", err)
-		}
-	}()
+func (c *KafkaConsumer) Run(ctx context.Context) {
+	defer c.close()
 
 	c.logger.Info("consume loop starting")
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("context canceled, exiting consumer loop")
-			return nil
+			c.logger.Warn("context canceled, exiting consumer loop")
+			return
 		default:
-			// Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
-			event := c.kConsumer.Poll(100)
+			event := c.kConsumer.Poll(c.pollTimeoutMs)
 			if event == nil {
 				continue
 			}
@@ -76,6 +74,25 @@ func (c *KafkaConsumer) Start(ctx context.Context) error {
 				continue
 			}
 		}
+	}
+}
+
+func (c *KafkaConsumer) Commit(partition int32, offset int64) {
+	offsetsToCommit := []kafka.TopicPartition{
+		{
+			Topic:     c.topic,
+			Partition: partition,
+			Offset:    kafka.Offset(offset + 1),
+		},
+	}
+
+	_, err := c.kConsumer.CommitOffsets(offsetsToCommit)
+	if err != nil {
+		c.logger.Error(
+			"error committing offset",
+			"offset", offset,
+			"error", err,
+		)
 	}
 }
 
@@ -99,7 +116,7 @@ func (c *KafkaConsumer) consume(event kafka.Event) error {
 		c.logger.Warn("non-fatal kafka error encountered", "error", e)
 		return e
 	default:
-		// Ignores internal events like partition assignments or rebalances
+		c.logger.Info("ignoring internal events like partition assignments or rebalances")
 	}
 
 	return nil
@@ -110,21 +127,14 @@ func (c *KafkaConsumer) process(msg *kafka.Message) error {
 		"topic", *msg.TopicPartition.Topic,
 		"partition", msg.TopicPartition.Partition,
 		"offset", msg.TopicPartition.Offset,
-		"key", string(msg.Key),
 	)
 
-	if msg.Value == nil {
-		if err := c.remove(msg); err != nil {
-			return err
-		}
-		return nil
+	switch msg.Value {
+	case nil:
+		return c.remove(msg)
+	default:
+		return c.update(msg)
 	}
-
-	if err := c.update(msg); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (c *KafkaConsumer) update(msg *kafka.Message) error {
@@ -138,30 +148,28 @@ func (c *KafkaConsumer) update(msg *kafka.Message) error {
 		return fmt.Errorf("failed to unmarshal protobuff payload 'msg.Value'")
 	}
 
-	c.dataChannel <- &Payload{
+	c.dataChannel <- c.updatePayload(&eventKey, &eventMesage, msg)
+	c.logger.Info("message pushed in queue")
+	return nil
+}
+
+func (c *KafkaConsumer) updatePayload(eventKey *v1.PBEventKey, eventMsg *v1.PBEventMessage, msg *kafka.Message) *Payload {
+	return &Payload{
 		Key: &Key{
 			Id:        eventKey.EventId,
 			Timestamp: time.Unix(eventKey.Timestamp, 0).UTC(),
 		},
 		Value: &Message{
-			Id:         eventMesage.EventId,
-			ResourceId: eventMesage.ResourceId,
-			Type:       eventMesage.Type,
-			Start:      time.Unix(eventMesage.Start, 0).UTC(),
-			End:        time.Unix(eventMesage.End, 0).UTC().UTC(),
+			Id:         eventMsg.EventId,
+			ResourceId: eventMsg.ResourceId,
+			Type:       eventMsg.Type,
+			Start:      time.Unix(eventMsg.Start, 0).UTC(),
+			End:        time.Unix(eventMsg.End, 0).UTC().UTC(),
 		},
-		IsDelete: false,
-		OnSuccess: func() {
-			if _, err := c.kConsumer.CommitMessage(msg); err != nil {
-				c.logger.Error("failed to commit message offset", "error", err)
-			}
-			c.hub.Send(msg.Value)
-			c.logger.Info("message commited")
-		},
+		IsDelete:  false,
+		Partition: msg.TopicPartition.Partition,
+		Offset:    int64(msg.TopicPartition.Offset),
 	}
-
-	c.logger.Info("message pushed in queue")
-	return nil
 }
 
 func (c *KafkaConsumer) remove(msg *kafka.Message) error {
@@ -170,20 +178,26 @@ func (c *KafkaConsumer) remove(msg *kafka.Message) error {
 		return fmt.Errorf("failed to unmarshal protobuff payload 'msg.Key'")
 	}
 
-	c.dataChannel <- &Payload{
+	c.dataChannel <- c.removePayload(&eventKey, msg)
+	return nil
+}
+
+func (c *KafkaConsumer) removePayload(eventKey *v1.PBEventKey, msg *kafka.Message) *Payload {
+	return &Payload{
 		Key: &Key{
 			Id:        eventKey.EventId,
 			Timestamp: time.Unix(eventKey.Timestamp, 0).UTC(),
 		},
-		Value:    &Message{},
-		IsDelete: true,
-		OnSuccess: func() {
-			if _, err := c.kConsumer.CommitMessage(msg); err != nil {
-				c.logger.Error("failed to commit message offset", "error", err)
-			}
-			c.logger.Info("message commited")
-		},
+		Value:     &Message{},
+		IsDelete:  true,
+		Partition: msg.TopicPartition.Partition,
+		Offset:    int64(msg.TopicPartition.Offset),
 	}
+}
 
-	return nil
+func (c *KafkaConsumer) close() {
+	c.logger.Info("closing kafka connection")
+	if err := c.kConsumer.Close(); err != nil {
+		c.logger.Error("failed to close kafka consumer cleanly", "error", err)
+	}
 }

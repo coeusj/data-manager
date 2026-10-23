@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"local/data-manager/internal/configuration"
-	"local/data-manager/internal/handlers"
 	"local/data-manager/internal/injestion"
 	"local/data-manager/internal/persistence"
 	"local/data-manager/internal/websocket"
@@ -18,7 +17,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("Worker process failed", "error", err)
+		slog.Error("reader process failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -28,11 +27,10 @@ func run() error {
 	defer stop()
 
 	opts := &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelDebug,
+		Level: slog.LevelDebug,
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
-	logger.Info("starting background worker..")
+	logger.Info("starting reader")
 
 	if err := start(ctx, logger); err != nil {
 		return fmt.Errorf("worker execution error: %w", err)
@@ -53,38 +51,32 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
-	dataChannel := make(chan *injestion.Payload, 5000)
-
 	hub := websocket.NewHub(logger)
-	go hub.Run(ctx)
+	go hub.Start(ctx)
 
-	storage, err := persistence.NewRedisStorage(ctx, config.Redis, logger)
-	if err != nil {
-		return fmt.Errorf("could not create storage instance %w", err)
-	}
+	payloadChannel := make(chan *injestion.Payload, 5000)
 
-	backgroundWorker := persistence.NewBackgroundWorker(storage, logger)
-	go backgroundWorker.Start(ctx, dataChannel)
-
-	kafkaConsumer, err := injestion.NewKafkaConsumer(config.Kafka, dataChannel, hub, logger)
+	kafkaConsumer, err := injestion.NewKafkaConsumer(config.Kafka, payloadChannel, hub, logger)
 	if err != nil {
 		return err
 	}
+	go kafkaConsumer.Run(ctx)
 
-	go func() {
-		if err := kafkaConsumer.Start(ctx); err != nil {
-			logger.Error("error starting kafka consumer", "error", err)
-			return
-		}
-	}()
+	cache, err := persistence.NewRedisCache(ctx, config.Redis, logger)
+	if err != nil {
+		return fmt.Errorf("could not create cache instance %w", err)
+	}
+
+	cacheServiceWorker := persistence.NewCacheServiceWorker(cache, hub, kafkaConsumer.Commit, logger)
+	go cacheServiceWorker.Start(ctx, payloadChannel)
 
 	router := gin.Default()
 	router.GET("/rt-events", func(ctx *gin.Context) {
-		handlers.NewWebsocketConnectionHandler(ctx, hub, logger)
+		websocket.NewWebsocketConnectionHandler(ctx, hub, logger)
 	})
 
 	router.Run(":8989")
 
-	close(dataChannel)
+	close(payloadChannel)
 	return nil
 }

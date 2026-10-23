@@ -28,38 +28,16 @@ func NewHub(logger *slog.Logger) *Hub {
 	}
 }
 
-func (h *Hub) Run(ctx context.Context) {
-	h.logger.Info("Hub running")
+func (h *Hub) Start(ctx context.Context) {
+	h.logger.Info("Hub started")
 	for {
 		select {
 		case conn := <-h.register:
-			h.mu.Lock()
-			h.clients[conn] = true
-			h.logger.Info("client registered")
-			h.mu.Unlock()
+			h.addConnection(conn)
 		case conn := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[conn]; ok {
-				delete(h.clients, conn)
-				conn.Close(websocket.StatusNormalClosure, "unregistered")
-				h.logger.Info("client unregistered")
-			}
-			h.mu.Unlock()
+			h.removeConnection(conn)
 		case msg := <-h.broadcast:
-			// TODO: consider batch send
-			h.logger.Info("received message to broadcast")
-			h.mu.Lock()
-			for conn := range h.clients {
-				wCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-				err := conn.Write(wCtx, websocket.MessageBinary, msg)
-				cancel()
-				if err != nil {
-					conn.Close(websocket.StatusInternalError, "failed write")
-					delete(h.clients, conn)
-				}
-			}
-			h.logger.Info("message broadcasted")
-			h.mu.Unlock()
+			h.broadcastMsg(ctx, msg)
 		}
 	}
 }
@@ -74,5 +52,44 @@ func (h *Hub) UnRegister(conn *websocket.Conn) {
 
 func (h *Hub) Send(msg []byte) {
 	h.broadcast <- msg
-	h.logger.Debug("add message in broadcast buffer")
+}
+
+func (h *Hub) addConnection(conn *websocket.Conn) {
+	h.mu.Lock()
+
+	h.clients[conn] = true
+	h.logger.Info("client registered")
+
+	h.mu.Unlock()
+}
+
+func (h *Hub) removeConnection(conn *websocket.Conn) {
+	h.mu.Lock()
+
+	if _, ok := h.clients[conn]; ok {
+		delete(h.clients, conn)
+		conn.Close(websocket.StatusNormalClosure, "unregistered")
+		h.logger.Info("client unregistered")
+	}
+
+	h.mu.Unlock()
+}
+
+// TODO: consider batch send
+func (h *Hub) broadcastMsg(ctx context.Context, msg []byte) {
+	h.logger.Info("received message to broadcast")
+	h.mu.Lock()
+
+	for conn := range h.clients {
+		wCtx, cancel := context.WithTimeout(ctx, time.Second*3)
+		err := conn.Write(wCtx, websocket.MessageBinary, msg)
+		cancel()
+		if err != nil {
+			conn.Close(websocket.StatusInternalError, "failed write")
+			delete(h.clients, conn)
+		}
+	}
+
+	h.logger.Info("message broadcasted")
+	h.mu.Unlock()
 }

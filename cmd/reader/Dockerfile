@@ -24,7 +24,7 @@ ENV CGO_ENABLED=1
 RUN go build \
     -tags musl \
     -ldflags="-s -w" \
-    -o /app/bin/worker ./cmd/worker
+    -o /app/bin/reader ./cmd/reader
 
 FROM alpine:3.20
 
@@ -37,8 +37,8 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy binary and config WITH appuser ownership
-COPY --chown=10001:10001 --from=builder /app/bin/worker .
-COPY --chown=10001:10001 config.worker.json /app/config.json
+COPY --chown=10001:10001 --from=builder /app/bin/reader .
+COPY --chown=10001:10001 config.reader.json /app/config.json
 
 ENV DM_CONFIG_PATH=/app/config.json
 
@@ -48,4 +48,4 @@ USER appuser
 
 EXPOSE 8989
 
-ENTRYPOINT ["./worker"]
+ENTRYPOINT ["./reader"]

@@ -9,7 +9,8 @@ type Payload struct {
 	Key       *Key
 	Value     *Message
 	IsDelete  bool
-	OnSuccess func()
+	Partition int32
+	Offset    int64
 }
 
 type Key struct {
@@ -18,11 +19,11 @@ type Key struct {
 }
 
 type Message struct {
-	Id         string
-	ResourceId string
-	Type       string
-	Start      time.Time
-	End        time.Time
+	Id         string    `json:"id"`
+	ResourceId string    `json:"resourceId"`
+	Type       string    `json:"type"`
+	Start      time.Time `json:"start"`
+	End        time.Time `json:"end"`
 }
 
 func (c *Message) Validate() error {

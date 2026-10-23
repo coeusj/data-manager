@@ -1,7 +1,7 @@
 package main
 
 import (
-	"local/data-manager/internal/handlers"
+	"local/data-manager/internal/api"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,7 +15,7 @@ func main() {
 
 	router := gin.Default()
 	router.GET("/events", func(ctx *gin.Context) {
-		res, err := handlers.GetEventsHandler(ctx, logger)
+		res, err := api.GetEventsHandler(ctx, logger)
 		if err != nil {
 			logger.Error("error while processing request", "error", err)
 		}
