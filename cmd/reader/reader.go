@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"local/data-manager/internal/configuration"
-	"local/data-manager/internal/injestion"
+	"local/data-manager/internal/consumer"
 	"local/data-manager/internal/persistence"
 	"local/data-manager/internal/websocket"
 	"log/slog"
@@ -54,9 +54,9 @@ func start(ctx context.Context, logger *slog.Logger) error {
 	hub := websocket.NewHub(logger)
 	go hub.Start(ctx)
 
-	payloadChannel := make(chan *injestion.Payload, 5000)
+	payloadChannel := make(chan *consumer.Payload, 5000)
 
-	kafkaConsumer, err := injestion.NewKafkaConsumer(config.Kafka, payloadChannel, hub, logger)
+	kafkaConsumer, err := consumer.NewKafkaConsumer(config.Kafka, payloadChannel, hub, logger)
 	if err != nil {
 		return err
 	}
@@ -67,8 +67,8 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not create cache instance %w", err)
 	}
 
-	cacheServiceWorker := persistence.NewCacheServiceWorker(cache, hub, kafkaConsumer.Commit, logger)
-	go cacheServiceWorker.Start(ctx, payloadChannel)
+	serviceWorker := persistence.NewServiceWorker(cache, hub, kafkaConsumer.Commit, logger)
+	go serviceWorker.Start(ctx, payloadChannel)
 
 	router := gin.Default()
 	router.GET("/rt-events", func(ctx *gin.Context) {

@@ -1,4 +1,4 @@
-package injestion
+package consumer
 
 import (
 	"errors"

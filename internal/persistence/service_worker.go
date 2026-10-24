@@ -4,20 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"local/data-manager/internal/injestion"
+	"local/data-manager/internal/consumer"
 	"local/data-manager/internal/websocket"
 	"log/slog"
 )
 
-type CacheServiceWorker struct {
+type ServiceWorker struct {
 	cache             Cache
 	hub               *websocket.Hub
 	commitKafkaOffset func(partition int32, offset int64)
 	logger            *slog.Logger
 }
 
-func NewCacheServiceWorker(cache Cache, hub *websocket.Hub, commitKafkaOffset func(partition int32, offset int64), logger *slog.Logger) *CacheServiceWorker {
-	return &CacheServiceWorker{
+func NewServiceWorker(cache Cache, hub *websocket.Hub, commitKafkaOffset func(partition int32, offset int64), logger *slog.Logger) *ServiceWorker {
+	return &ServiceWorker{
 		cache:             cache,
 		hub:               hub,
 		commitKafkaOffset: commitKafkaOffset,
@@ -25,7 +25,7 @@ func NewCacheServiceWorker(cache Cache, hub *websocket.Hub, commitKafkaOffset fu
 	}
 }
 
-func (w *CacheServiceWorker) Start(ctx context.Context, dataChannel <-chan *injestion.Payload) {
+func (w *ServiceWorker) Start(ctx context.Context, dataChannel <-chan *consumer.Payload) {
 	w.logger.Info("cache service worker starting")
 	for payload := range dataChannel {
 		select {
@@ -59,7 +59,7 @@ func (w *CacheServiceWorker) Start(ctx context.Context, dataChannel <-chan *inje
 	}
 }
 
-func (w *CacheServiceWorker) save(ctx context.Context, eventKey *injestion.Key, model *injestion.Message) error {
+func (w *ServiceWorker) save(ctx context.Context, eventKey *consumer.Key, model *consumer.Message) error {
 	payload, err := json.Marshal(model)
 	if err != nil {
 		return fmt.Errorf("failed to marshal model: %v", err)
