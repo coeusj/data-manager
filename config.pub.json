@@ -4,8 +4,8 @@
         "topic": "resources-events"
     },
     "genLoop": {
-        "tickMs": 300,
-        "durationSeconds": 3
+        "tickMs": 1,
+        "durationSeconds": 5
     },
     "producer": {
         "useBatch": false,

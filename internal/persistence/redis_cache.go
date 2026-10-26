@@ -39,37 +39,43 @@ func NewRedisCache(ctx context.Context, config configuration.RedisConfig, logger
 	}, nil
 }
 
-func (s *RedisCache) Save(ctx context.Context, id string, value []byte) error {
-	key := s.createKey(ctx, id)
-	err := s.rdbClient.Set(ctx, key, value, s.dataTTLSeconds).Err()
+func (r *RedisCache) Save(ctx context.Context, id string, value []byte) error {
+	key := r.createKey(ctx, id)
+	err := r.rdbClient.Set(ctx, key, value, r.dataTTLSeconds).Err()
 	if err != nil {
 		return err
 	}
 
-	s.logger.Info("data saved successfully")
+	r.logger.Info("data saved successfully")
 	return nil
 }
 
-func (s *RedisCache) Delete(ctx context.Context, id string) error {
-	key := fmt.Sprintf("%s:%s", s.namespace, id)
-	if err := s.rdbClient.Del(ctx, key).Err(); err != nil {
+func (r *RedisCache) Delete(ctx context.Context, id string) error {
+	key := fmt.Sprintf("%s:%s", r.namespace, id)
+	if err := r.rdbClient.Del(ctx, key).Err(); err != nil {
 		return err
 	}
 
-	s.logger.Info("data deleted successfully")
+	r.logger.Info("data deleted successfully")
 	return nil
 }
 
-func (s *RedisCache) createKey(ctx context.Context, id string) string {
+func (r *RedisCache) Close() {
+	if err := r.rdbClient.Close(); err != nil {
+		r.logger.Error("failed to close redis client", "error", err)
+	}
+}
+
+func (r *RedisCache) createKey(ctx context.Context, id string) string {
 	if id != "" {
-		return fmt.Sprintf("%s:%s", s.namespace, id)
+		return fmt.Sprintf("%s:%s", r.namespace, id)
 	}
 
-	newId, err := s.rdbClient.Incr(ctx, "events:id:seq").Result()
+	newId, err := r.rdbClient.Incr(ctx, "events:id:seq").Result()
 	if err == nil {
-		return fmt.Sprintf("%s:%d", s.namespace, newId)
+		return fmt.Sprintf("%s:%d", r.namespace, newId)
 	}
 
 	uuid := uuid.New()
-	return fmt.Sprintf("%s:%s", s.namespace, uuid.String())
+	return fmt.Sprintf("%s:%s", r.namespace, uuid.String())
 }

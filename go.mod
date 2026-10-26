@@ -1,6 +1,6 @@
 module local/data-manager
 
-go 1.26.0
+go 1.27.3
 
 require (
 	github.com/IBM/sarama v1.61.1

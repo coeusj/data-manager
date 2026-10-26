@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	v1 "local/data-manager/gen/go/event/v1"
 	"local/data-manager/internal/configuration"
 	"local/data-manager/internal/consumer"
 	"local/data-manager/internal/persistence"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/protobuf/proto"
 )
 
 func main() {
@@ -54,29 +56,46 @@ func start(ctx context.Context, logger *slog.Logger) error {
 	hub := websocket.NewHub(logger)
 	go hub.Start(ctx)
 
-	payloadChannel := make(chan *consumer.Payload, 5000)
-
-	kafkaConsumer, err := consumer.NewKafkaConsumer(config.Kafka, payloadChannel, hub, logger)
-	if err != nil {
-		return err
-	}
-	go kafkaConsumer.Run(ctx)
-
 	cache, err := persistence.NewRedisCache(ctx, config.Redis, logger)
 	if err != nil {
 		return fmt.Errorf("could not create cache instance %w", err)
 	}
 
-	serviceWorker := persistence.NewServiceWorker(cache, hub, kafkaConsumer.Commit, logger)
+	payloadChannel := make(chan *consumer.Payload[v1.PBEventKey, v1.PBEventMessage], 5000)
+
+	deserKey := func(key []byte) (*v1.PBEventKey, error) {
+		pbKey := &v1.PBEventKey{}
+		if err := proto.Unmarshal(key, pbKey); err != nil {
+			return nil, err
+		}
+		return pbKey, nil
+	}
+	deserVal := func(val []byte) (*v1.PBEventMessage, error) {
+		pbVal := &v1.PBEventMessage{}
+		if err := proto.Unmarshal(val, pbVal); err != nil {
+			return nil, err
+		}
+		return pbVal, nil
+	}
+
+	consumer, err := consumer.NewKafkaConsumer(config.Kafka, payloadChannel, deserKey, deserVal, logger)
+	if err != nil {
+		return err
+	}
+
+	serviceWorker := persistence.NewServiceWorker[v1.PBEventKey, v1.PBEventMessage](cache, hub, consumer.Commit, logger)
 	go serviceWorker.Start(ctx, payloadChannel)
 
+	go consumer.Run(ctx)
+
 	router := gin.Default()
-	router.GET("/rt-events", func(ctx *gin.Context) {
+	router.GET("/events", func(ctx *gin.Context) {
 		websocket.NewWebsocketConnectionHandler(ctx, hub, logger)
 	})
 
 	router.Run(":8989")
 
 	close(payloadChannel)
+	cache.Close()
 	return nil
 }

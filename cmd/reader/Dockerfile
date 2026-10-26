@@ -1,4 +1,4 @@
-FROM golang:1.26.0-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 # Install build dependencies required for CGO and librdkafka on musl
 RUN apk add --no-cache \
