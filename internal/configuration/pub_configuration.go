@@ -35,7 +35,7 @@ func LoadPublisherConfig(path string) (*PublisherConfig, error) {
 		Kafka: KafkaConfig{
 			Brokers: "",
 			Topic:   "",
-			GroupId: "",
+			GroupID: "",
 		},
 		GenLoop: GenLoopConfig{
 			TickMs:          1000,

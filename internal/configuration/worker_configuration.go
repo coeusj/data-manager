@@ -23,11 +23,11 @@ func LoadWorkerConfig(path string) (*WorkerConfig, error) {
 		Kafka: KafkaConfig{
 			Brokers: "",
 			Topic:   "",
-			GroupId: "default",
+			GroupID: "default",
 		},
 		Redis: RedisConfig{
 			Address:        "",
-			NameSpace:      "",
+			Namespace:      "",
 			DataTTLSeconds: 0,
 			DB:             0,
 		},
@@ -58,7 +58,7 @@ func (c *WorkerConfig) Validate() error {
 		return fmt.Errorf("redis address is required")
 	}
 
-	if c.Redis.NameSpace == "" {
+	if c.Redis.Namespace == "" {
 		return fmt.Errorf("redis namespace is missing")
 	}
 

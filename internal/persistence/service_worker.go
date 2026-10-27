@@ -5,20 +5,20 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"local/data-manager/internal/consumer"
-	"local/data-manager/internal/websocket"
+	"local/data-manager/internal/realtime"
 	"log/slog"
 )
 
 type ServiceWorker[K any, V any] struct {
 	cache             Cache
-	hub               *websocket.Hub
+	hub               *realtime.Hub
 	commitKafkaOffset func(partition int32, offset int64)
 	logger            *slog.Logger
 }
 
 func NewServiceWorker[K any, V any](
 	cache Cache,
-	hub *websocket.Hub,
+	hub *realtime.Hub,
 	commitKafkaOffset func(partition int32, offset int64),
 	logger *slog.Logger) *ServiceWorker[K, V] {
 	return &ServiceWorker[K, V]{

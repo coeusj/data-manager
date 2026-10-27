@@ -34,7 +34,7 @@ func NewRedisCache(ctx context.Context, config configuration.RedisConfig, logger
 	return &RedisCache{
 		rdbClient:      rdbClient,
 		logger:         logger,
-		namespace:      config.NameSpace,
+		namespace:      config.Namespace,
 		dataTTLSeconds: time.Duration(config.DataTTLSeconds) * time.Second,
 	}, nil
 }
@@ -71,9 +71,9 @@ func (r *RedisCache) createKey(ctx context.Context, id string) string {
 		return fmt.Sprintf("%s:%s", r.namespace, id)
 	}
 
-	newId, err := r.rdbClient.Incr(ctx, "events:id:seq").Result()
+	newID, err := r.rdbClient.Incr(ctx, "events:id:seq").Result()
 	if err == nil {
-		return fmt.Sprintf("%s:%d", r.namespace, newId)
+		return fmt.Sprintf("%s:%d", r.namespace, newID)
 	}
 
 	uuid := uuid.New()

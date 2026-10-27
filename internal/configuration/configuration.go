@@ -3,12 +3,12 @@ package configuration
 type KafkaConfig struct {
 	Brokers string `json:"brokers"`
 	Topic   string `json:"topic"`
-	GroupId string `json:"groupId"`
+	GroupID string `json:"groupId"`
 }
 
 type RedisConfig struct {
 	Address        string `json:"address"`
-	NameSpace      string `json:"namespace"`
+	Namespace      string `json:"namespace"`
 	DataTTLSeconds uint   `json:"dataTTLSeconds"`
 	DB             int    `json:"db"`
 }

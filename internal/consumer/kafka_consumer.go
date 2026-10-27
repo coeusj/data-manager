@@ -27,7 +27,7 @@ func NewKafkaConsumer[K any, V any](
 	logger *slog.Logger) (*KafkaConsumer[K, V], error) {
 	consumerConfig := kafka.ConfigMap{
 		"bootstrap.servers":  kafkaConfig.Brokers,
-		"group.id":           kafkaConfig.GroupId,
+		"group.id":           kafkaConfig.GroupID,
 		"auto.offset.reset":  "earliest",
 		"enable.auto.commit": false,
 	}

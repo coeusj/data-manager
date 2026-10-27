@@ -1,4 +1,4 @@
-package websocket
+package realtime
 
 import (
 	"context"
@@ -30,14 +30,27 @@ func NewHub(logger *slog.Logger) *Hub {
 
 func (h *Hub) Start(ctx context.Context) {
 	h.logger.Info("Hub started")
+
 	for {
 		select {
-		case conn := <-h.register:
-			h.addConnection(conn)
-		case conn := <-h.unregister:
-			h.removeConnection(conn)
-		case msg := <-h.broadcast:
-			h.broadcastMsg(ctx, msg)
+		case <-ctx.Done():
+			h.logger.Info("context cancelled. Closing Hub")
+			for conn := range h.clients {
+				if err := conn.Close(websocket.StatusNormalClosure, "context cancelled"); err != nil {
+					h.logger.Error("could not close connection")
+					continue
+				}
+			}
+			return
+		default:
+			select {
+			case conn := <-h.register:
+				h.addConnection(conn)
+			case conn := <-h.unregister:
+				h.removeConnection(conn)
+			case msg := <-h.broadcast:
+				h.broadcastMsg(ctx, msg)
+			}
 		}
 	}
 }
@@ -47,7 +60,7 @@ func (h *Hub) Register(conn *websocket.Conn) {
 }
 
 func (h *Hub) UnRegister(conn *websocket.Conn) {
-	h.register <- conn
+	h.unregister <- conn
 }
 
 func (h *Hub) Send(msg []byte) {
