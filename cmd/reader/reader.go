@@ -7,7 +7,7 @@ import (
 	"local/data-manager/internal/configuration"
 	"local/data-manager/internal/consumer"
 	"local/data-manager/internal/persistence"
-	"local/data-manager/internal/websocket"
+	"local/data-manager/internal/realtime"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -53,15 +53,13 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not load configurations: %w", err)
 	}
 
-	hub := websocket.NewHub(logger)
+	hub := realtime.NewWsHub(logger)
 	go hub.Start(ctx)
 
 	cache, err := persistence.NewRedisCache(ctx, config.Redis, logger)
 	if err != nil {
 		return fmt.Errorf("could not create cache instance %w", err)
 	}
-
-	payloadChannel := make(chan *consumer.Payload[v1.PBEventKey, v1.PBEventMessage], 5000)
 
 	deserKey := func(key []byte) (*v1.PBEventKey, error) {
 		pbKey := &v1.PBEventKey{}
@@ -78,24 +76,23 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return pbVal, nil
 	}
 
-	consumer, err := consumer.NewKafkaConsumer(config.Kafka, payloadChannel, deserKey, deserVal, logger)
+	consumer, err := consumer.NewKafkaConsumer(config.Kafka, deserKey, deserVal, logger)
 	if err != nil {
 		return err
 	}
 
 	serviceWorker := persistence.NewServiceWorker[v1.PBEventKey, v1.PBEventMessage](cache, hub, consumer.Commit, logger)
-	go serviceWorker.Start(ctx, payloadChannel)
+	go serviceWorker.Start(ctx, consumer.Messages())
 
 	go consumer.Run(ctx)
 
 	router := gin.Default()
 	router.GET("/events", func(ctx *gin.Context) {
-		websocket.NewWebsocketConnectionHandler(ctx, hub, logger)
+		realtime.NewWebsocketConnectionHandler(ctx, hub, logger)
 	})
 
 	router.Run(":8989")
 
-	close(payloadChannel)
 	cache.Close()
 	return nil
 }

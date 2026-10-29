@@ -9,19 +9,20 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
+type Deserializer[T any] func([]byte) (*T, error)
+
 type KafkaConsumer[K any, V any] struct {
 	kConsumer      *kafka.Consumer
 	topic          *string
 	pollTimeoutMs  int
-	dataChannel    chan<- *Payload[K, V]
-	deserializeKey func([]byte) (*K, error)
-	deserializeVal func([]byte) (*V, error)
+	messages       chan *Payload[K, V]
+	deserializeKey Deserializer[K]
+	deserializeVal Deserializer[V]
 	logger         *slog.Logger
 }
 
 func NewKafkaConsumer[K any, V any](
 	kafkaConfig configuration.KafkaConfig,
-	dataChannel chan<- *Payload[K, V],
 	deserializeKey func([]byte) (*K, error),
 	deserializeVal func([]byte) (*V, error),
 	logger *slog.Logger) (*KafkaConsumer[K, V], error) {
@@ -45,7 +46,7 @@ func NewKafkaConsumer[K any, V any](
 		kConsumer:      consumer,
 		topic:          &kafkaConfig.Topic,
 		pollTimeoutMs:  100, // Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
-		dataChannel:    dataChannel,
+		messages:       make(chan *Payload[K, V], 500),
 		deserializeKey: deserializeKey,
 		deserializeVal: deserializeVal,
 		logger:         logger,
@@ -74,6 +75,10 @@ func (k *KafkaConsumer[K, V]) Run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (k *KafkaConsumer[K, V]) Messages() chan *Payload[K, V] {
+	return k.messages
 }
 
 func (k *KafkaConsumer[K, V]) Commit(partition int32, offset int64) {
@@ -135,7 +140,7 @@ func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
 
 	switch msg.Value {
 	case nil:
-		k.dataChannel <- &Payload[K, V]{
+		k.messages <- &Payload[K, V]{
 			HashKey:   sha256.Sum256(msg.Key),
 			Key:       key,
 			IsDelete:  true,
@@ -148,7 +153,7 @@ func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
 			return err
 		}
 
-		k.dataChannel <- &Payload[K, V]{
+		k.messages <- &Payload[K, V]{
 			HashKey:   sha256.Sum256(msg.Key),
 			Key:       key,
 			Value:     val,

@@ -11,19 +11,19 @@ import (
 
 type ServiceWorker[K any, V any] struct {
 	cache             Cache
-	hub               *realtime.Hub
+	broadcaster       realtime.Broadcaster
 	commitKafkaOffset func(partition int32, offset int64)
 	logger            *slog.Logger
 }
 
 func NewServiceWorker[K any, V any](
 	cache Cache,
-	hub *realtime.Hub,
+	broadcaster realtime.Broadcaster,
 	commitKafkaOffset func(partition int32, offset int64),
 	logger *slog.Logger) *ServiceWorker[K, V] {
 	return &ServiceWorker[K, V]{
 		cache:             cache,
-		hub:               hub,
+		broadcaster:       broadcaster,
 		commitKafkaOffset: commitKafkaOffset,
 		logger:            logger,
 	}
@@ -55,7 +55,7 @@ func (s *ServiceWorker[K, V]) Start(ctx context.Context, dataChannel <-chan *con
 			}
 
 			s.commitKafkaOffset(payload.Partition, payload.Offset)
-			s.sendToHub(payload)
+			s.sendToHub(ctx, payload)
 		}
 	}
 }
@@ -73,13 +73,13 @@ func (s *ServiceWorker[K, V]) save(ctx context.Context, key string, payloadVal *
 	return nil
 }
 
-func (s *ServiceWorker[K, V]) sendToHub(payload *consumer.Payload[K, V]) {
+func (s *ServiceWorker[K, V]) sendToHub(ctx context.Context, payload *consumer.Payload[K, V]) {
 	msg, err := json.Marshal(payload.Value)
 	if err != nil {
 		s.logger.Error("failed to marshal payload message", "error", err)
 	}
 
-	s.hub.Send(msg)
+	s.broadcaster.Broadcast(ctx, msg)
 }
 
 func (s *ServiceWorker[K, V]) hashToBase64(hashedKey [32]byte) string {

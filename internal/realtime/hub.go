@@ -3,106 +3,89 @@ package realtime
 import (
 	"context"
 	"log/slog"
-	"sync"
-	"time"
-
-	"github.com/coder/websocket"
 )
 
-type Hub struct {
-	clients    map[*websocket.Conn]bool
-	broadcast  chan []byte
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
-	logger     *slog.Logger
-	mu         sync.Mutex
+type Client struct {
+	send chan []byte
 }
 
-func NewHub(logger *slog.Logger) *Hub {
-	return &Hub{
-		clients:    make(map[*websocket.Conn]bool),
+func NewClient() *Client {
+	return &Client{make(chan []byte)}
+}
+
+type Hub interface {
+	Add(c *Client)
+	Remove(c *Client)
+}
+
+type Broadcaster interface {
+	Broadcast(ctx context.Context, msg []byte)
+}
+
+type WsHub struct {
+	clients    []*Client
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
+	logger     *slog.Logger
+}
+
+func NewWsHub(logger *slog.Logger) *WsHub {
+	return &WsHub{
+		clients:    make([]*Client, 0),
 		broadcast:  make(chan []byte),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
 		logger:     logger,
 	}
 }
 
-func (h *Hub) Start(ctx context.Context) {
+func (h *WsHub) Start(ctx context.Context) {
 	h.logger.Info("Hub started")
 
 	for {
 		select {
 		case <-ctx.Done():
 			h.logger.Info("context cancelled. Closing Hub")
-			for conn := range h.clients {
-				if err := conn.Close(websocket.StatusNormalClosure, "context cancelled"); err != nil {
-					h.logger.Error("could not close connection")
-					continue
-				}
-			}
 			return
 		default:
 			select {
-			case conn := <-h.register:
-				h.addConnection(conn)
-			case conn := <-h.unregister:
-				h.removeConnection(conn)
+			case c := <-h.register:
+				h.clients = append(h.clients, c)
+				h.logger.Info("client added")
+			case c := <-h.unregister:
+				for i, client := range h.clients {
+					if client == c {
+						h.clients = append(h.clients[:i], h.clients[i+1:]...)
+						close(c.send)
+						break
+					}
+				}
+				h.logger.Info("client removed")
 			case msg := <-h.broadcast:
-				h.broadcastMsg(ctx, msg)
+				h.logger.Info("broadcasting message")
+				for i, c := range h.clients {
+					select {
+					case c.send <- msg:
+						h.logger.Info("message sent to client's channel", "index", i)
+					default:
+						h.logger.Warn("client's buffer could be full", "index", i)
+						// if client's send buffer is full, drop or disconnect
+					}
+				}
 			}
 		}
 	}
 }
 
-func (h *Hub) Register(conn *websocket.Conn) {
-	h.register <- conn
+func (h *WsHub) Add(c *Client) {
+	h.register <- c
 }
 
-func (h *Hub) UnRegister(conn *websocket.Conn) {
-	h.unregister <- conn
+func (h *WsHub) Remove(c *Client) {
+	h.unregister <- c
 }
 
-func (h *Hub) Send(msg []byte) {
+func (h *WsHub) Broadcast(ctx context.Context, msg []byte) {
 	h.broadcast <- msg
-}
-
-func (h *Hub) addConnection(conn *websocket.Conn) {
-	h.mu.Lock()
-
-	h.clients[conn] = true
-	h.logger.Info("client registered")
-
-	h.mu.Unlock()
-}
-
-func (h *Hub) removeConnection(conn *websocket.Conn) {
-	h.mu.Lock()
-
-	if _, ok := h.clients[conn]; ok {
-		delete(h.clients, conn)
-		conn.Close(websocket.StatusNormalClosure, "unregistered")
-		h.logger.Info("client unregistered")
-	}
-
-	h.mu.Unlock()
-}
-
-// TODO: consider batch send
-func (h *Hub) broadcastMsg(ctx context.Context, msg []byte) {
-	h.logger.Info("received message to broadcast")
-	h.mu.Lock()
-
-	for conn := range h.clients {
-		wCtx, cancel := context.WithTimeout(ctx, time.Second*3)
-		err := conn.Write(wCtx, websocket.MessageBinary, msg)
-		cancel()
-		if err != nil {
-			conn.Close(websocket.StatusInternalError, "failed write")
-			delete(h.clients, conn)
-		}
-	}
-
-	h.logger.Info("message broadcasted")
-	h.mu.Unlock()
 }
