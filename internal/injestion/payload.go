@@ -1,7 +1,7 @@
 package injestion
 
 type Payload[K any, V any] struct {
-	HashKey   [32]byte
+	ID        string
 	Key       *K
 	Value     *V
 	IsDelete  bool

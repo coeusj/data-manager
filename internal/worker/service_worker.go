@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"local/data-manager/internal/injestion"
 	"local/data-manager/internal/realtime"
@@ -46,19 +45,19 @@ func (s *ServiceWorker[K, V]) Start(ctx context.Context, dataChannel <-chan *inj
 			s.logger.Info("processing payload")
 
 			if payload.IsDelete {
-				if err := s.cache.Delete(ctx, s.hashToBase64(payload.HashKey)); err != nil {
+				if err := s.cache.Delete(ctx, payload.ID); err != nil {
 					s.logger.Error("could not delete data", "error", err)
 				}
 				continue // TODO: should also send a deletion message to hub
 			}
 
-			if err := s.save(ctx, s.hashToBase64(payload.HashKey), payload.Value); err != nil {
+			if err := s.save(ctx, payload.ID, payload.Value); err != nil {
 				s.logger.Error("could not save payload", "error", err)
 				continue // TODO: should retry
 			}
 
 			s.commit(payload.Partition, payload.Offset)
-			s.sendToHub(ctx, payload)
+			s.broadcast(ctx, payload)
 		}
 	}
 }
@@ -76,16 +75,11 @@ func (s *ServiceWorker[K, V]) save(ctx context.Context, key string, payloadVal *
 	return nil
 }
 
-func (s *ServiceWorker[K, V]) sendToHub(ctx context.Context, payload *injestion.Payload[K, V]) {
+func (s *ServiceWorker[K, V]) broadcast(ctx context.Context, payload *injestion.Payload[K, V]) {
 	msg, err := json.Marshal(payload.Value)
 	if err != nil {
 		s.logger.Error("failed to marshal payload message", "error", err)
 	}
 
 	s.broadcaster.Broadcast(ctx, msg)
-}
-
-func (s *ServiceWorker[K, V]) hashToBase64(hashedKey [32]byte) string {
-	base64Str := base64.StdEncoding.EncodeToString(hashedKey[:])
-	return base64Str
 }

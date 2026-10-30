@@ -29,7 +29,7 @@ func LoadReaderConfig(path string) (*ReaderConfig, error) {
 			Address:        "",
 			Namespace:      "",
 			DataTTLSeconds: 0,
-			DB:             0,
+			DBIndex:        0,
 		},
 	}
 

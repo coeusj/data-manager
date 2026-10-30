@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/protobuf/proto"
@@ -62,7 +63,7 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("could not create cache instance %w", err)
 	}
 
-	consumer, err := injestion.NewKafkaConsumer(config.Kafka, decodeKey, decodeVal, logger)
+	consumer, err := injestion.NewKafkaConsumer(config.Kafka, decodeKey, decodeVal, generateID, logger)
 	if err != nil {
 		return err
 	}
@@ -99,4 +100,14 @@ func decodeVal(val []byte) (*v1.PBEventMessage, error) {
 	}
 
 	return pbVal, nil
+}
+
+func generateID(key []byte) string {
+	pbKey := &v1.PBEventKey{}
+	if err := proto.Unmarshal(key, pbKey); err != nil {
+		randomID := uuid.New()
+		return randomID.String()
+	}
+
+	return fmt.Sprintf("%s:%d", pbKey.EventId, pbKey.Timestamp)
 }

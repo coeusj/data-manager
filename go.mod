@@ -7,7 +7,6 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/confluentinc/confluent-kafka-go v1.9.2
 	github.com/gin-gonic/gin v1.12.0
-	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.22.0
 	google.golang.org/protobuf v1.36.10
 )

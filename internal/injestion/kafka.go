@@ -2,7 +2,6 @@ package injestion
 
 import (
 	"context"
-	"crypto/sha256"
 	"local/data-manager/internal/configuration"
 	"log/slog"
 
@@ -10,6 +9,7 @@ import (
 )
 
 type Deserializer[T any] func([]byte) (*T, error)
+type IDGenerator func([]byte) string
 
 type KafkaConsumer[K any, V any] struct {
 	kConsumer      *kafka.Consumer
@@ -18,13 +18,15 @@ type KafkaConsumer[K any, V any] struct {
 	messages       chan *Payload[K, V]
 	deserializeKey Deserializer[K]
 	deserializeVal Deserializer[V]
+	generateID     IDGenerator
 	logger         *slog.Logger
 }
 
 func NewKafkaConsumer[K any, V any](
 	kafkaConfig configuration.KafkaConfig,
-	deserializeKey func([]byte) (*K, error),
-	deserializeVal func([]byte) (*V, error),
+	deserializeKey Deserializer[K],
+	deserializeVal Deserializer[V],
+	generateID IDGenerator,
 	logger *slog.Logger) (*KafkaConsumer[K, V], error) {
 	consumerConfig := kafka.ConfigMap{
 		"bootstrap.servers":  kafkaConfig.Brokers,
@@ -49,6 +51,7 @@ func NewKafkaConsumer[K any, V any](
 		messages:       make(chan *Payload[K, V], 500),
 		deserializeKey: deserializeKey,
 		deserializeVal: deserializeVal,
+		generateID:     generateID,
 		logger:         logger,
 	}, nil
 }
@@ -110,7 +113,7 @@ func (k *KafkaConsumer[K, V]) Commit(partition int32, offset int64) {
 func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
 	switch e := event.(type) {
 	case *kafka.Message:
-		if err := k.processEvent(e); err != nil {
+		if err := k.process(e); err != nil {
 			k.logger.Error("failed to process message",
 				"topic", *e.TopicPartition.Topic,
 				"partition", e.TopicPartition.Partition,
@@ -133,7 +136,7 @@ func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
 	return nil
 }
 
-func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
+func (k *KafkaConsumer[K, V]) process(msg *kafka.Message) error {
 	key, err := k.deserializeKey(msg.Key)
 	if err != nil {
 		return err
@@ -148,7 +151,7 @@ func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
 	switch msg.Value {
 	case nil:
 		k.messages <- &Payload[K, V]{
-			HashKey:   sha256.Sum256(msg.Key),
+			ID:        k.generateID(msg.Key),
 			Key:       key,
 			IsDelete:  true,
 			Partition: msg.TopicPartition.Partition,
@@ -161,7 +164,7 @@ func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
 		}
 
 		k.messages <- &Payload[K, V]{
-			HashKey:   sha256.Sum256(msg.Key),
+			ID:        k.generateID(msg.Key),
 			Key:       key,
 			Value:     val,
 			IsDelete:  false,
