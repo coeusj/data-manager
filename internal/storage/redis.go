@@ -1,4 +1,4 @@
-package persistence
+package storage
 
 import (
 	"context"
@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+
+type Cache interface {
+	Save(ctx context.Context, id string, value []byte) error
+	Delete(ctx context.Context, id string) error
+	Close()
+}
 
 type RedisCache struct {
 	rdbClient      *redis.Client

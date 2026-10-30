@@ -13,6 +13,10 @@ func NewClient() *Client {
 	return &Client{make(chan []byte)}
 }
 
+func (c *Client) Messages() <-chan []byte {
+	return c.send
+}
+
 type Hub interface {
 	Add(c *Client)
 	Remove(c *Client)

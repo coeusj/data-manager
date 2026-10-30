@@ -1,35 +1,38 @@
-package persistence
+package worker
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"local/data-manager/internal/consumer"
+	"local/data-manager/internal/injestion"
 	"local/data-manager/internal/realtime"
+	"local/data-manager/internal/storage"
 	"log/slog"
 )
 
+type Committer func(partition int32, offset int64)
+
 type ServiceWorker[K any, V any] struct {
-	cache             Cache
-	broadcaster       realtime.Broadcaster
-	commitKafkaOffset func(partition int32, offset int64)
-	logger            *slog.Logger
+	cache       storage.Cache
+	broadcaster realtime.Broadcaster
+	commit      Committer
+	logger      *slog.Logger
 }
 
 func NewServiceWorker[K any, V any](
-	cache Cache,
+	cache storage.Cache,
 	broadcaster realtime.Broadcaster,
-	commitKafkaOffset func(partition int32, offset int64),
+	commit Committer,
 	logger *slog.Logger) *ServiceWorker[K, V] {
 	return &ServiceWorker[K, V]{
-		cache:             cache,
-		broadcaster:       broadcaster,
-		commitKafkaOffset: commitKafkaOffset,
-		logger:            logger,
+		cache:       cache,
+		broadcaster: broadcaster,
+		commit:      commit,
+		logger:      logger,
 	}
 }
 
-func (s *ServiceWorker[K, V]) Start(ctx context.Context, dataChannel <-chan *consumer.Payload[K, V]) {
+func (s *ServiceWorker[K, V]) Start(ctx context.Context, dataChannel <-chan *injestion.Payload[K, V]) {
 	defer s.cache.Close()
 
 	s.logger.Info("cache service worker starting")
@@ -54,7 +57,7 @@ func (s *ServiceWorker[K, V]) Start(ctx context.Context, dataChannel <-chan *con
 				continue // TODO: should retry
 			}
 
-			s.commitKafkaOffset(payload.Partition, payload.Offset)
+			s.commit(payload.Partition, payload.Offset)
 			s.sendToHub(ctx, payload)
 		}
 	}
@@ -73,7 +76,7 @@ func (s *ServiceWorker[K, V]) save(ctx context.Context, key string, payloadVal *
 	return nil
 }
 
-func (s *ServiceWorker[K, V]) sendToHub(ctx context.Context, payload *consumer.Payload[K, V]) {
+func (s *ServiceWorker[K, V]) sendToHub(ctx context.Context, payload *injestion.Payload[K, V]) {
 	msg, err := json.Marshal(payload.Value)
 	if err != nil {
 		s.logger.Error("failed to marshal payload message", "error", err)

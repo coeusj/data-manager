@@ -1,4 +1,4 @@
-package consumer
+package injestion
 
 type Payload[K any, V any] struct {
 	HashKey   [32]byte

@@ -6,12 +6,12 @@ import (
 	"os"
 )
 
-type WorkerConfig struct {
+type ReaderConfig struct {
 	Kafka KafkaConfig `json:"kafka"`
 	Redis RedisConfig `json:"redis"`
 }
 
-func LoadWorkerConfig(path string) (*WorkerConfig, error) {
+func LoadReaderConfig(path string) (*ReaderConfig, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open config file: %w", err)
@@ -19,7 +19,7 @@ func LoadWorkerConfig(path string) (*WorkerConfig, error) {
 
 	defer file.Close()
 
-	conf := WorkerConfig{
+	conf := ReaderConfig{
 		Kafka: KafkaConfig{
 			Brokers: "",
 			Topic:   "",
@@ -45,7 +45,7 @@ func LoadWorkerConfig(path string) (*WorkerConfig, error) {
 	return &conf, nil
 }
 
-func (c *WorkerConfig) Validate() error {
+func (c *ReaderConfig) Validate() error {
 	if c.Kafka.Brokers == "" {
 		return fmt.Errorf("kafka brokers is required")
 	}

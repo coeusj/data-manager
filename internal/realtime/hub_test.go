@@ -29,7 +29,7 @@ func TestHub_AddNewClient(t *testing.T) {
 	hub.Broadcast(ctx, testMsg)
 
 	select {
-	case msg := <-client.send:
+	case msg := <-client.Messages():
 		if string(msg) != string(testMsg) {
 			t.Errorf("expected message %q, got %q", testMsg, msg)
 		}
@@ -64,7 +64,7 @@ func TestHub_RemoveClient(t *testing.T) {
 	hub.Broadcast(ctx, testMsg)
 
 	select {
-	case _, ok := <-client.send:
+	case _, ok := <-client.Messages():
 		if ok {
 			t.Errorf("client's channel still open, expected to be closed")
 		}
@@ -97,7 +97,7 @@ func TestHub_BroadcastMessageToAllClients(t *testing.T) {
 
 	for i, c := range clients {
 		select {
-		case msg := <-c.send:
+		case msg := <-c.Messages():
 			if string(msg) != string(testMsg) {
 				t.Errorf("expected message %q, got %q", testMsg, msg)
 			}

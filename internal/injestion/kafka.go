@@ -1,4 +1,4 @@
-package consumer
+package injestion
 
 import (
 	"context"
@@ -98,6 +98,13 @@ func (k *KafkaConsumer[K, V]) Commit(partition int32, offset int64) {
 			"error", err,
 		)
 	}
+
+	k.logger.Info(
+		"offset commited",
+		"topic", k.topic,
+		"partition", partition,
+		"offset", offset,
+	)
 }
 
 func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
@@ -127,16 +134,16 @@ func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
 }
 
 func (k *KafkaConsumer[K, V]) processEvent(msg *kafka.Message) error {
+	key, err := k.deserializeKey(msg.Key)
+	if err != nil {
+		return err
+	}
+
 	k.logger.Info("processing message",
 		"topic", *msg.TopicPartition.Topic,
 		"partition", msg.TopicPartition.Partition,
 		"offset", msg.TopicPartition.Offset,
 	)
-
-	key, err := k.deserializeKey(msg.Key)
-	if err != nil {
-		return err
-	}
 
 	switch msg.Value {
 	case nil:

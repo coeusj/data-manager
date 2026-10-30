@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewWebsocketConnectionHandler(ctx *gin.Context, hub Hub, logger *slog.Logger) {
+func EventsHandler(ctx *gin.Context, hub Hub, logger *slog.Logger) {
 	conn, err := websocket.Accept(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		logger.Error("error during handshake", "error", err)
@@ -20,7 +20,7 @@ func NewWebsocketConnectionHandler(ctx *gin.Context, hub Hub, logger *slog.Logge
 
 	for {
 		select {
-		case msg, ok := <-client.send:
+		case msg, ok := <-client.Messages():
 			if !ok {
 				continue
 			}
