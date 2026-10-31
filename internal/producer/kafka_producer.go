@@ -3,7 +3,6 @@ package producer
 import (
 	"context"
 	"fmt"
-	"local/data-manager/internal/configuration"
 	"log/slog"
 	"strings"
 	"sync"
@@ -16,7 +15,7 @@ type KafkaProducer struct {
 	logger    *slog.Logger
 }
 
-func NewKafkaProducer(kafkaConfig configuration.KafkaConfig, conf configuration.ProducerConfig, logger *slog.Logger) (*KafkaProducer, error) {
+func NewKafkaProducer(brokers string, logger *slog.Logger) (*KafkaProducer, error) {
 	kConfig := sarama.NewConfig()
 	kConfig.Producer.RequiredAcks = sarama.WaitForAll
 	kConfig.Producer.Retry.Max = 5
@@ -24,7 +23,7 @@ func NewKafkaProducer(kafkaConfig configuration.KafkaConfig, conf configuration.
 	kConfig.Producer.Partitioner = sarama.NewHashPartitioner
 	kConfig.Producer.Compression = sarama.CompressionZSTD
 
-	kProducer, err := sarama.NewAsyncProducer(strings.Split(kafkaConfig.Brokers, ","), kConfig)
+	kProducer, err := sarama.NewAsyncProducer(strings.Split(brokers, ","), kConfig)
 	if err != nil {
 		return nil, fmt.Errorf("could not create kafka producer: %w", err)
 	}

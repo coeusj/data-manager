@@ -22,7 +22,7 @@ type KafkaBatchProducer struct {
 	logger              *slog.Logger
 }
 
-func NewKafkaBatchProducer(kafkaConfig configuration.KafkaConfig, conf configuration.ProducerConfig, logger *slog.Logger) (*KafkaBatchProducer, error) {
+func NewKafkaBatchProducer(brokers string, conf *configuration.PublisherConfig, logger *slog.Logger) (*KafkaBatchProducer, error) {
 	kConfig := sarama.NewConfig()
 	kConfig.Producer.RequiredAcks = sarama.WaitForAll
 	kConfig.Producer.Retry.Max = 5
@@ -30,16 +30,16 @@ func NewKafkaBatchProducer(kafkaConfig configuration.KafkaConfig, conf configura
 	kConfig.Producer.Partitioner = sarama.NewHashPartitioner
 	kConfig.Producer.Compression = sarama.CompressionZSTD
 
-	kProducer, err := sarama.NewSyncProducer(strings.Split(kafkaConfig.Brokers, ","), kConfig)
+	kProducer, err := sarama.NewSyncProducer(strings.Split(brokers, ","), kConfig)
 	if err != nil {
 		return nil, fmt.Errorf("could not create kafka producer: %w", err)
 	}
 
 	return &KafkaBatchProducer{
 		kProducer:           kProducer,
-		batchSize:           conf.BatchSize,
-		channel:             make(chan *sarama.ProducerMessage, conf.BatchSize),
-		autoSendFrequencyMs: time.Duration(conf.FlushFrequencyMs),
+		batchSize:           conf.Producer.BatchSize,
+		channel:             make(chan *sarama.ProducerMessage, conf.Producer.BatchSize),
+		autoSendFrequencyMs: time.Duration(conf.Producer.FlushFrequencyMs),
 		started:             false,
 		logger:              logger,
 	}, nil

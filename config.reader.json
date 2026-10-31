@@ -1,13 +1,8 @@
 {
-    "kafka": {
-        "brokers": "kafka:29092",
+    "consumer": {
         "topic": "resources-events",
-        "groupId": "dm-ui"
-    },
-    "redis": {
-        "address": "redis:6379",
+        "groupId": "dm-ui",
         "dataTTLSeconds": 1200,
-        "namespace": "events",
-        "db": 0
+        "bufferSize": 500
     }
 }

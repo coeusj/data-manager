@@ -78,7 +78,13 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DM_CONFIG_PATH: "/app/config.json"
+      APP_ENV: "release"
+      CONF_PATH: "/app/config.json"
+      KAFKA_BROKERS: "kafka:29092"
+      REDIS_URL: "redis:6379"
+      REDIS_EVENTS_DB_IDX: 0
+      REDIS_EVENTS_NAMESPACE: "events"
+      READER_URL: "0.0.0.0:8989"
     networks:
       - data-manager-net
 

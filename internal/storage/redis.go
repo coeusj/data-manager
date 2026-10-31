@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"local/data-manager/internal/configuration"
 	"log/slog"
 	"time"
 
@@ -23,11 +22,17 @@ type RedisCache struct {
 	dataTTLSeconds time.Duration
 }
 
-func NewRedisCache(ctx context.Context, config configuration.RedisConfig, logger *slog.Logger) (*RedisCache, error) {
+func NewRedisCache(
+	ctx context.Context,
+	url string,
+	db int,
+	namespace string,
+	ttlSeconds uint,
+	logger *slog.Logger) (*RedisCache, error) {
 	rdbClient := redis.NewClient(&redis.Options{
-		Addr:     config.Address,
+		Addr:     url,
 		Password: "",
-		DB:       config.DBIndex,
+		DB:       db,
 	})
 
 	if err := rdbClient.Ping(ctx).Err(); err != nil {
@@ -39,8 +44,8 @@ func NewRedisCache(ctx context.Context, config configuration.RedisConfig, logger
 	return &RedisCache{
 		rdbClient:      rdbClient,
 		logger:         logger,
-		namespace:      config.Namespace,
-		dataTTLSeconds: time.Duration(config.DataTTLSeconds) * time.Second,
+		namespace:      namespace,
+		dataTTLSeconds: time.Duration(ttlSeconds) * time.Second,
 	}, nil
 }
 

@@ -1,0 +1,10 @@
+{
+    "producer": {
+        "topic": "resources-events",
+        "tickMs": 100,
+        "durationSeconds": 3,
+        "useBatch": false,
+        "batchSize": 1000,
+        "flushFrequencyMs": 60000
+    }
+}

@@ -11,8 +11,17 @@ import (
 type Deserializer[T any] func([]byte) (*T, error)
 type IDGenerator func([]byte) string
 
+type Payload[K any, V any] struct {
+	ID        string
+	Key       *K
+	Value     *V
+	IsDelete  bool
+	Partition int32
+	Offset    int64
+}
+
 type KafkaConsumer[K any, V any] struct {
-	kConsumer      *kafka.Consumer
+	consumer       *kafka.Consumer
 	topic          *string
 	pollTimeoutMs  int
 	messages       chan *Payload[K, V]
@@ -23,14 +32,15 @@ type KafkaConsumer[K any, V any] struct {
 }
 
 func NewKafkaConsumer[K any, V any](
-	kafkaConfig configuration.KafkaConfig,
+	brokers string,
+	config *configuration.ReaderConfig,
 	deserializeKey Deserializer[K],
 	deserializeVal Deserializer[V],
 	generateID IDGenerator,
 	logger *slog.Logger) (*KafkaConsumer[K, V], error) {
 	consumerConfig := kafka.ConfigMap{
-		"bootstrap.servers":  kafkaConfig.Brokers,
-		"group.id":           kafkaConfig.GroupID,
+		"bootstrap.servers":  brokers,
+		"group.id":           config.Consumer.GroupID,
 		"auto.offset.reset":  "earliest",
 		"enable.auto.commit": false,
 	}
@@ -40,15 +50,15 @@ func NewKafkaConsumer[K any, V any](
 		return nil, err
 	}
 
-	if err := consumer.Subscribe(kafkaConfig.Topic, nil); err != nil {
+	if err := consumer.Subscribe(config.Consumer.Topic, nil); err != nil {
 		return nil, err
 	}
 
 	return &KafkaConsumer[K, V]{
-		kConsumer:      consumer,
-		topic:          &kafkaConfig.Topic,
+		consumer:       consumer,
+		topic:          &config.Consumer.Topic,
 		pollTimeoutMs:  100, // Poll for events with a 100ms timeout to keep loop responsive to ctx.Done()
-		messages:       make(chan *Payload[K, V], 500),
+		messages:       make(chan *Payload[K, V], config.Consumer.BufferSize),
 		deserializeKey: deserializeKey,
 		deserializeVal: deserializeVal,
 		generateID:     generateID,
@@ -67,7 +77,7 @@ func (k *KafkaConsumer[K, V]) Run(ctx context.Context) {
 			k.logger.Warn("context canceled, exiting consumer loop")
 			return
 		default:
-			event := k.kConsumer.Poll(k.pollTimeoutMs)
+			event := k.consumer.Poll(k.pollTimeoutMs)
 			if event == nil {
 				continue
 			}
@@ -93,7 +103,7 @@ func (k *KafkaConsumer[K, V]) Commit(partition int32, offset int64) {
 		},
 	}
 
-	_, err := k.kConsumer.CommitOffsets(offsetsToCommit)
+	_, err := k.consumer.CommitOffsets(offsetsToCommit)
 	if err != nil {
 		k.logger.Error(
 			"error committing offset",
@@ -120,6 +130,7 @@ func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
 				"offset", e.TopicPartition.Offset,
 				"error", err,
 			)
+
 			return err
 		}
 	case kafka.Error:
@@ -127,6 +138,7 @@ func (k *KafkaConsumer[K, V]) consume(event kafka.Event) error {
 			k.logger.Error("fatal kafka client error", "error", e)
 			return e
 		}
+
 		k.logger.Warn("non-fatal kafka error encountered", "error", e)
 		return e
 	default:
@@ -148,37 +160,32 @@ func (k *KafkaConsumer[K, V]) process(msg *kafka.Message) error {
 		"offset", msg.TopicPartition.Offset,
 	)
 
-	switch msg.Value {
-	case nil:
-		k.messages <- &Payload[K, V]{
-			ID:        k.generateID(msg.Key),
-			Key:       key,
-			IsDelete:  true,
-			Partition: msg.TopicPartition.Partition,
-			Offset:    int64(msg.TopicPartition.Offset),
-		}
-	default:
+	payload := &Payload[K, V]{
+		ID:        k.generateID(msg.Key),
+		Key:       key,
+		IsDelete:  true,
+		Partition: msg.TopicPartition.Partition,
+		Offset:    int64(msg.TopicPartition.Offset),
+	}
+
+	if msg.Value != nil {
 		val, err := k.deserializeVal(msg.Value)
 		if err != nil {
 			return err
 		}
 
-		k.messages <- &Payload[K, V]{
-			ID:        k.generateID(msg.Key),
-			Key:       key,
-			Value:     val,
-			IsDelete:  false,
-			Partition: msg.TopicPartition.Partition,
-			Offset:    int64(msg.TopicPartition.Offset),
-		}
+		payload.IsDelete = false
+		payload.Value = val
 	}
 
+	k.messages <- payload
 	return nil
 }
 
 func (k *KafkaConsumer[K, V]) close() {
 	k.logger.Info("closing kafka connection")
-	if err := k.kConsumer.Close(); err != nil {
+
+	if err := k.consumer.Close(); err != nil {
 		k.logger.Error("failed to close kafka consumer cleanly", "error", err)
 	}
 }

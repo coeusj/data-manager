@@ -6,9 +6,15 @@ import (
 	"os"
 )
 
+type ConsumerConfig struct {
+	Topic          string `json:"topic"`
+	GroupID        string `json:"groupId"`
+	DataTTLSeconds uint   `json:"dataTTLSeconds"`
+	BufferSize     uint   `json:"bufferSize"`
+}
+
 type ReaderConfig struct {
-	Kafka KafkaConfig `json:"kafka"`
-	Redis RedisConfig `json:"redis"`
+	Consumer ConsumerConfig `json:"consumer"`
 }
 
 func LoadReaderConfig(path string) (*ReaderConfig, error) {
@@ -20,16 +26,9 @@ func LoadReaderConfig(path string) (*ReaderConfig, error) {
 	defer file.Close()
 
 	conf := ReaderConfig{
-		Kafka: KafkaConfig{
-			Brokers: "",
-			Topic:   "",
-			GroupID: "default",
-		},
-		Redis: RedisConfig{
-			Address:        "",
-			Namespace:      "",
-			DataTTLSeconds: 0,
-			DBIndex:        0,
+		Consumer: ConsumerConfig{
+			DataTTLSeconds: 0, // infinite
+			BufferSize:     100,
 		},
 	}
 
@@ -46,20 +45,12 @@ func LoadReaderConfig(path string) (*ReaderConfig, error) {
 }
 
 func (c *ReaderConfig) Validate() error {
-	if c.Kafka.Brokers == "" {
-		return fmt.Errorf("kafka brokers is required")
+	if c.Consumer.Topic == "" {
+		return fmt.Errorf("topic is required")
 	}
 
-	if c.Kafka.Topic == "" {
-		return fmt.Errorf("kafka topic is missing")
-	}
-
-	if c.Redis.Address == "" {
-		return fmt.Errorf("redis address is required")
-	}
-
-	if c.Redis.Namespace == "" {
-		return fmt.Errorf("redis namespace is missing")
+	if c.Consumer.GroupID == "" {
+		return fmt.Errorf("group ID is required")
 	}
 
 	return nil

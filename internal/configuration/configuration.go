@@ -1,14 +1,32 @@
 package configuration
 
-type KafkaConfig struct {
-	Brokers string `json:"brokers"`
-	Topic   string `json:"topic"`
-	GroupID string `json:"groupId"`
-}
+import (
+	"fmt"
+	"log/slog"
+	"os"
 
-type RedisConfig struct {
-	Address        string `json:"address"`
-	Namespace      string `json:"namespace"`
-	DataTTLSeconds uint   `json:"dataTTLSeconds"`
-	DBIndex        int    `json:"db"`
+	"github.com/joho/godotenv"
+)
+
+func LoadEnvFile(logger *slog.Logger, paths ...string) error {
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "development"
+	}
+
+	if appEnv == "development" || appEnv == "debug" {
+		logger.Info("Loading .env file for local development...")
+
+		if len(paths) > 0 {
+			if err := godotenv.Load(paths...); err != nil {
+				return fmt.Errorf("Warning: .env file not found in path, relying on system environment variables: %v", err)
+			}
+		}
+
+		if err := godotenv.Load(); err != nil {
+			return fmt.Errorf("Warning: .env file not found, relying on system environment variables: %v", err)
+		}
+	}
+
+	return nil
 }

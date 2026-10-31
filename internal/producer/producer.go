@@ -16,16 +16,16 @@ type Producer interface {
 	Stop()
 }
 
-func NewProducer(batch bool, kafkaConfig configuration.KafkaConfig, conf configuration.ProducerConfig, logger *slog.Logger) (Producer, error) {
+func NewProducer(batch bool, brokers string, conf *configuration.PublisherConfig, logger *slog.Logger) (Producer, error) {
 	if batch {
-		producerBatch, err := NewKafkaBatchProducer(kafkaConfig, conf, logger)
+		producerBatch, err := NewKafkaBatchProducer(brokers, conf, logger)
 		if err != nil {
 			return nil, err
 		}
 		return producerBatch, nil
 	}
 
-	producer, err := NewKafkaProducer(kafkaConfig, conf, logger)
+	producer, err := NewKafkaProducer(brokers, logger)
 	if err != nil {
 		return nil, err
 	}

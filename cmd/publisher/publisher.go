@@ -19,17 +19,22 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	logger.Info("publisher starting")
 
-	config, err := configuration.LoadPublisherConfig("config.pub.json")
+	brokers := "localhost:9092"
+	if err := configuration.LoadEnvFile(logger); err != nil {
+		logger.Error("could not load env file", "error", err)
+	}
+
+	config, err := configuration.LoadPublisherConfig("./config.publisher.json")
 	if err != nil {
-		logger.Error("could not find configuration")
+		logger.Error("could not load configuration file", "error", err)
 		os.Exit(1)
 	}
 
-	duration := time.Second * time.Duration(config.GenLoop.DurationSeconds)
+	duration := time.Second * time.Duration(config.Producer.DurationSeconds)
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 
-	kProducer, err := producer.NewProducer(config.Producer.UseBatch, config.Kafka, config.Producer, logger)
+	kProducer, err := producer.NewProducer(config.Producer.UseBatch, brokers, config, logger)
 	if err != nil {
 		logger.Error("could not create kafka producer")
 		os.Exit(1)
@@ -38,7 +43,7 @@ func main() {
 	kProducer.Start(ctx, wg)
 	defer kProducer.Stop()
 
-	ticker := time.NewTicker(time.Millisecond * time.Duration(config.GenLoop.TickMs))
+	ticker := time.NewTicker(time.Millisecond * time.Duration(config.Producer.TickMs))
 	defer ticker.Stop()
 	count := 0
 
@@ -71,7 +76,7 @@ generationLoop:
 			}
 
 			msg := &sarama.ProducerMessage{
-				Topic: config.Kafka.Topic,
+				Topic: config.Producer.Topic,
 				Key:   sarama.ByteEncoder(keyProto),
 				Value: sarama.ByteEncoder(valueProto),
 			}

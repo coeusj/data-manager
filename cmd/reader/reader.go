@@ -30,10 +30,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	opts := &slog.HandlerOptions{
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
-	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	}))
+
 	logger.Info("starting reader")
 
 	if err := start(ctx, logger); err != nil {
@@ -44,33 +44,23 @@ func run() error {
 }
 
 func start(ctx context.Context, logger *slog.Logger) error {
-	configPath := os.Getenv("DM_CONFIG_PATH")
-	if configPath == "" {
-		logger.Error("missing env variable DM_CONFIG_PATH")
+	if err := configuration.LoadEnvFile(logger); err != nil {
+		logger.Error("could not load env file", "error", err)
+	}
+
+	config, err := configuration.LoadReaderConfig(os.Getenv("CONF_PATH"))
+	if err != nil {
+		logger.Error("could not load configuration file", "error", err)
 		os.Exit(1)
 	}
 
-	config, err := configuration.LoadReaderConfig(configPath)
-	if err != nil {
-		return fmt.Errorf("could not load configurations: %w", err)
-	}
-
 	hub := realtime.NewWsHub(logger)
-	go hub.Start(ctx)
-
-	cache, err := storage.NewRedisCache(ctx, config.Redis, logger)
-	if err != nil {
-		return fmt.Errorf("could not create cache instance %w", err)
-	}
-
-	consumer, err := injestion.NewKafkaConsumer(config.Kafka, decodeKey, decodeVal, generateID, logger)
-	if err != nil {
-		return err
-	}
-
+	cache := storage.NewEventsCache(ctx, config, logger)
+	consumer := injestion.NewEventsConsumer(config, decodeKey, decodeVal, generateID, logger)
 	serviceWorker := worker.NewServiceWorker[v1.PBEventKey, v1.PBEventMessage](cache, hub, consumer.Commit, logger)
-	go serviceWorker.Start(ctx, consumer.Messages())
 
+	go hub.Start(ctx)
+	go serviceWorker.Start(ctx, consumer.Messages())
 	go consumer.Run(ctx)
 
 	router := gin.Default()
@@ -78,7 +68,7 @@ func start(ctx context.Context, logger *slog.Logger) error {
 		realtime.EventsHandler(ctx, hub, logger)
 	})
 
-	router.Run(":8989")
+	router.Run(os.Getenv("READER_URL"))
 
 	cache.Close()
 	return nil

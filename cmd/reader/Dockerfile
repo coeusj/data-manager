@@ -40,7 +40,13 @@ WORKDIR /app
 COPY --chown=10001:10001 --from=builder /app/bin/reader .
 COPY --chown=10001:10001 config.reader.json /app/config.json
 
-ENV DM_CONFIG_PATH=/app/config.json
+ENV APP_ENV=release
+ENV CONF_PATH=/app/config.json
+ENV KAFKA_BROKERS=127.0.0.1:9092
+ENV REDIS_URL=127.0.0.1:6379
+ENV REDIS_EVENTS_DB_IDX=0
+ENV REDIS_EVENTS_NAMESPACE=events
+ENV WS_URL=127.0.0.1:8989
 
 # Run as non-root user
 RUN adduser -D -u 10001 appuser
